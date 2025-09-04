@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.1.5] - 2025-09-04
+### Added
+- Documentation site: MkDocs + Material theme under `docs/`, with GitHub Pages workflow to build and deploy.
+
+### Changed
+- Packaging metadata: set `Homepage`/`Documentation` URLs to the GitHub Pages site.
+
 ## [0.1.4] - 2025-09-04
 ### Changed
 - CI/Release: switch to PyPI Trusted Publishing (OIDC) with attestations enabled.
@@ -47,7 +54,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kevinsames/spark-fuse/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kevinsames/spark-fuse/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kevinsames/spark-fuse/compare/v0.1.1...v0.1.2

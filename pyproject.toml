@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spark-fuse"
-version = "0.1.4"
+version = "0.1.5"
 description = "Open-source PySpark toolkit with connectors and CLI for Azure Storage, Databricks, Microsoft Fabric Lakehouses, Unity Catalog, and Hive Metastore."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -33,7 +33,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kevinsames/spark-fuse"
+Homepage = "https://kevinsames.github.io/spark-fuse/"
+Documentation = "https://kevinsames.github.io/spark-fuse/"
+Repository = "https://github.com/kevinsames/spark-fuse"
 Issues = "https://github.com/kevinsames/spark-fuse/issues"
 
 [project.optional-dependencies]
