@@ -62,7 +62,7 @@ target-version = "py39"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-  { include = "spark_fuse", from = "src" }
+  "src/spark_fuse"
 ]
 
 [tool.hatch.build.targets.sdist]
