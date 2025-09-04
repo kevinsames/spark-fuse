@@ -1,0 +1,59 @@
+[
+  build-system
+]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spark-fuse"
+version = "0.1.0"
+description = "Open-source PySpark toolkit with connectors and CLI for Azure Storage, Databricks, Microsoft Fabric Lakehouses, Unity Catalog, and Hive Metastore."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [
+  { name = "spark-fuse maintainers" }
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "pyspark>=3.4,<4",
+  "delta-spark>=3,<4",
+  "adlfs>=2023.4",
+  "azure-identity>=1.14",
+  "typer>=0.9",
+  "rich>=13",
+  "pydantic>=2",
+  "requests>=2",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/spark-fuse"
+Issues = "https://github.com/your-org/spark-fuse/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+  "pytest-cov>=4",
+  "ruff>=0.4",
+  "pre-commit>=3",
+]
+
+[project.scripts]
+spark-fuse = "spark_fuse.tools.cli:app"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
