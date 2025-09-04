@@ -17,6 +17,7 @@ def detect_environment() -> str:
 
 
 def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
+    """Attach Delta configs and attempt to configure via delta-spark if installed."""
     # Configure Delta if possible; on Databricks this is already set.
     builder = builder.config(
         "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"

@@ -13,6 +13,10 @@ def preview(df: DataFrame, n: int = 5) -> str:
 
 
 def ensure_columns(df: DataFrame, required: Iterable[str]) -> DataFrame:
+    """Validate that `df` contains all `required` columns.
+
+    Raises a `ValueError` including the missing columns otherwise.
+    """
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")

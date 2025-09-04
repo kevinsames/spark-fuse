@@ -23,11 +23,13 @@ class QdrantConnector(Connector):
     name = "qdrant"
 
     def validate_path(self, path: str) -> bool:
+        """Return True if `path` looks like a supported Qdrant URI."""
         return bool(_QDRANT_RE.match(path))
 
     def read(
         self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
     ) -> DataFrame:
+        """Read vectors/payloads from Qdrant (not yet implemented)."""
         raise NotImplementedError(
             "Qdrant read is not implemented in the stub. Install 'qdrant-client' and use a specialized reader."
         )
@@ -41,6 +43,7 @@ class QdrantConnector(Connector):
         mode: str = "append",
         **options: Any,
     ) -> None:
+        """Write vectors/payloads to Qdrant (not yet implemented)."""
         raise NotImplementedError(
             "Qdrant write is not implemented in the stub. Install 'qdrant-client' and implement upsert per collection schema."
         )

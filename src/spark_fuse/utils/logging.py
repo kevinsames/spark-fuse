@@ -10,6 +10,7 @@ _console: Optional[Console] = None
 
 
 def console() -> Console:
+    """Return a shared Rich Console instance with basic theming."""
     global _console
     if _console is None:
         _console = Console(theme=Theme({"info": "cyan", "warn": "yellow", "error": "bold red"}))

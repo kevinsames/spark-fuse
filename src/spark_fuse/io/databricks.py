@@ -13,14 +13,28 @@ from .registry import register_connector
 
 @register_connector
 class DatabricksDBFSConnector(Connector):
+    """Connector for Databricks DBFS paths (\"dbfs:/\").
+
+    Supports reading and writing Delta (default), Parquet, and CSV.
+    """
+
     name = "databricks"
 
     def validate_path(self, path: str) -> bool:
+        """Return True if `path` is a DBFS URI (starts with `dbfs:/`)."""
         return path.startswith("dbfs:/")
 
     def read(
         self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
     ) -> DataFrame:
+        """Read a dataset from DBFS.
+
+        Args:
+            spark: Active `SparkSession`.
+            path: DBFS location.
+            fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
+            **options: Additional Spark read options.
+        """
         if not self.validate_path(path):
             raise ValueError(f"Invalid DBFS path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
@@ -41,6 +55,15 @@ class DatabricksDBFSConnector(Connector):
         mode: str = "error",
         **options: Any,
     ) -> None:
+        """Write a dataset to DBFS.
+
+        Args:
+            df: DataFrame to write.
+            path: Output DBFS location.
+            fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
+            mode: Save mode, e.g. `error`, `overwrite`, `append`.
+            **options: Additional Spark write options.
+        """
         if not self.validate_path(path):
             raise ValueError(f"Invalid DBFS path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()

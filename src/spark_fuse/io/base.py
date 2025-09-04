@@ -7,7 +7,11 @@ from pyspark.sql import DataFrame, SparkSession
 
 
 class Connector(ABC):
-    """Abstract base class for IO connectors."""
+    """Abstract base class for IO connectors.
+
+    Connector implementations must define a class attribute `name` and implement
+    `validate_path`, `read`, and `write`.
+    """
 
     #: Short identifier used for registry lookups
     name: ClassVar[str]

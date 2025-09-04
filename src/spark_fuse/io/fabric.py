@@ -15,14 +15,29 @@ _ONELAKE_ABFSS = re.compile(r"^abfss://[^@]+@onelake\.dfs\.fabric\.microsoft\.co
 
 @register_connector
 class FabricLakehouseConnector(Connector):
+    """Connector for Microsoft Fabric Lakehouses via OneLake URIs.
+
+    Accepts either `onelake://...` URIs or `abfss://...@onelake.dfs.fabric.microsoft.com/...`.
+    Supports Delta (default), Parquet, and CSV.
+    """
+
     name = "fabric"
 
     def validate_path(self, path: str) -> bool:
+        """Return True if the path looks like a valid OneLake URI."""
         return bool(_ONELAKE_SCHEME.match(path) or _ONELAKE_ABFSS.match(path))
 
     def read(
         self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
     ) -> DataFrame:
+        """Read a dataset from a Fabric OneLake-backed location.
+
+        Args:
+            spark: Active `SparkSession`.
+            path: OneLake or abfss-on-OneLake path.
+            fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
+            **options: Additional Spark read options.
+        """
         if not self.validate_path(path):
             raise ValueError(f"Invalid Fabric OneLake path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
@@ -43,6 +58,15 @@ class FabricLakehouseConnector(Connector):
         mode: str = "error",
         **options: Any,
     ) -> None:
+        """Write a dataset to a Fabric OneLake-backed location.
+
+        Args:
+            df: DataFrame to write.
+            path: Output OneLake path.
+            fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
+            mode: Save mode, e.g. `error`, `overwrite`, `append`.
+            **options: Additional Spark write options.
+        """
         if not self.validate_path(path):
             raise ValueError(f"Invalid Fabric OneLake path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
