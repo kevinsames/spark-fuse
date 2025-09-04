@@ -1,7 +1,7 @@
 spark-fuse  
 ================
 
-![CI](https://github.com/your-org/spark-fuse/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/kevinsames/spark-fuse/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
 spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, and Hive Metastore.
@@ -13,7 +13,17 @@ Features
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
 Installation
+- Create a virtual environment (recommended)
+  - macOS/Linux:
+    - `python3 -m venv .venv`
+    - `source .venv/bin/activate`
+    - `python -m pip install --upgrade pip`
+  - Windows (PowerShell):
+    - `python -m venv .venv`
+    - `.\\.venv\\Scripts\\Activate.ps1`
+    - `python -m pip install --upgrade pip`
 - From source (dev): `pip install -e ".[dev]"`
+- From PyPI: `pip install spark-fuse`
 
 Quickstart
 1) Create a SparkSession with helpful defaults

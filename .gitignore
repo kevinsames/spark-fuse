@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Test & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Editors/OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Spark/Delta local artifacts
+spark-warehouse/
+metastore_db/
+derby.log
+.delta/
+_delta_log/
+
+# Logs
+logs/
+*.log
+
+# Env files
+.env
+.env.*
+

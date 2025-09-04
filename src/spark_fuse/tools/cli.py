@@ -14,6 +14,7 @@ from ..catalogs import hive, unity
 from ..io import azure_adls  # noqa: F401  # Ensure registration side-effects
 from ..io import databricks as dbr  # noqa: F401
 from ..io import fabric as fabric_io  # noqa: F401
+from ..io import qdrant as qdrant_io  # noqa: F401
 from ..io.registry import connector_for_path, list_connectors
 from ..spark import create_session
 from ..utils.logging import console
@@ -131,4 +132,3 @@ def databricks_submit_cmd(
 
 if __name__ == "__main__":
     app()
-
