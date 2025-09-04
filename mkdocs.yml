@@ -1,0 +1,37 @@
+site_name: spark-fuse
+site_description: Open-source PySpark toolkit for Azure Storage, Databricks, Microsoft Fabric Lakehouses, Unity Catalog, and Hive Metastore.
+site_url: https://kevinsames.github.io/spark-fuse/
+repo_name: kevinsames/spark-fuse
+repo_url: https://github.com/kevinsames/spark-fuse
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.instant
+    - content.code.copy
+    - toc.integrate
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - codehilite
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Install: install.md
+  - Guides:
+      - CLI: cli.md
+  - Project:
+      - Contributing: contributing.md
+      - Code of Conduct: code-of-conduct.md
+      - Security: security.md
+      - Governance: governance.md
+      - Roadmap: roadmap.md
+      - Changelog: changelog.md
+      - Maintainers: maintainers.md
+      - Authors: authors.md
