@@ -25,4 +25,3 @@ def register_external_delta_table(
 ) -> None:
     create_database(spark, database)
     spark.sql(register_external_delta_table_sql(database, table, location))
-

@@ -20,7 +20,9 @@ class FabricLakehouseConnector(Connector):
     def validate_path(self, path: str) -> bool:
         return bool(_ONELAKE_SCHEME.match(path) or _ONELAKE_ABFSS.match(path))
 
-    def read(self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any) -> DataFrame:
+    def read(
+        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+    ) -> DataFrame:
         if not self.validate_path(path):
             raise ValueError(f"Invalid Fabric OneLake path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
@@ -51,4 +53,3 @@ class FabricLakehouseConnector(Connector):
             writer.format(fmt).save(path)
         else:
             raise ValueError(f"Unsupported format for Fabric: {fmt}")
-

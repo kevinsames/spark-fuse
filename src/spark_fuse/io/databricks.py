@@ -18,7 +18,9 @@ class DatabricksDBFSConnector(Connector):
     def validate_path(self, path: str) -> bool:
         return path.startswith("dbfs:/")
 
-    def read(self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any) -> DataFrame:
+    def read(
+        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+    ) -> DataFrame:
         if not self.validate_path(path):
             raise ValueError(f"Invalid DBFS path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
@@ -69,4 +71,3 @@ def databricks_submit_job(
     resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=60)
     resp.raise_for_status()
     return resp.json()
-

@@ -63,4 +63,3 @@ def create_session(
 
     spark = builder.getOrCreate()
     return spark
-

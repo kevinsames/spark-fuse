@@ -17,7 +17,9 @@ class Connector(ABC):
         """Return True if the given path/URI is supported by this connector."""
 
     @abstractmethod
-    def read(self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any) -> DataFrame:
+    def read(
+        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+    ) -> DataFrame:
         """Read a dataset from the given path using the connector."""
 
     @abstractmethod
@@ -31,4 +33,3 @@ class Connector(ABC):
         **options: Any,
     ) -> None:
         """Write a dataset to the given path using the connector."""
-

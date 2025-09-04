@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Iterable
 
 from pyspark.sql import DataFrame
 
@@ -17,4 +17,3 @@ def ensure_columns(df: DataFrame, required: Iterable[str]) -> DataFrame:
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
     return df
-

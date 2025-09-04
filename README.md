@@ -1,4 +1,4 @@
-spark-fuse  
+spark-fuse
 ================
 
 ![CI](https://github.com/kevinsames/spark-fuse/actions/workflows/ci.yml/badge.svg)

@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 
@@ -12,4 +10,3 @@ def spark():
     spark = create_session(app_name="spark-fuse-tests", master="local[2]")
     yield spark
     spark.stop()
-

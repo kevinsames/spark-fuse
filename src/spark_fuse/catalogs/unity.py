@@ -33,4 +33,3 @@ def register_external_delta_table(
     spark: SparkSession, *, catalog: str, schema: str, table: str, location: str
 ) -> None:
     spark.sql(register_external_delta_table_sql(catalog, schema, table, location))
-

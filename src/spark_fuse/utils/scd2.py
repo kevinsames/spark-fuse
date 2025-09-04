@@ -49,8 +49,7 @@ def scd2_upsert(
 
     if not target_exists:
         initial = (
-            source_df
-            .withColumn(effective_col, ts_col)
+            source_df.withColumn(effective_col, ts_col)
             .withColumn(expiry_col, F.lit(None).cast("timestamp"))
             .withColumn(current_col, F.lit(True))
         )
@@ -98,11 +97,9 @@ def scd2_upsert(
     rows_to_insert = joined.where(is_new | any_changed).select([s[c] for c in source_df.columns])
 
     to_insert = (
-        rows_to_insert
-        .withColumn(effective_col, ts_col)
+        rows_to_insert.withColumn(effective_col, ts_col)
         .withColumn(expiry_col, F.lit(None).cast("timestamp"))
         .withColumn(current_col, F.lit(True))
     )
 
     to_insert.write.format("delta").mode("append").save(target_path)
-

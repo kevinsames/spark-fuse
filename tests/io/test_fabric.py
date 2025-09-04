@@ -8,4 +8,3 @@ def test_fabric_path_validation():
         "abfss://lakehouse@onelake.dfs.fabric.microsoft.com/workspace/lakehouse/Tables/events"
     )
     assert not c.validate_path("abfss://container@account.dfs.core.windows.net/path")
-

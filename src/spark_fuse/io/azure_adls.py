@@ -19,7 +19,9 @@ class ADLSGen2Connector(Connector):
     def validate_path(self, path: str) -> bool:
         return bool(_ABFSS_RE.match(path))
 
-    def read(self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any) -> DataFrame:
+    def read(
+        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+    ) -> DataFrame:
         if not self.validate_path(path):
             raise ValueError(f"Invalid ADLS Gen2 path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
@@ -50,4 +52,3 @@ class ADLSGen2Connector(Connector):
             writer.format(fmt).save(path)
         else:
             raise ValueError(f"Unsupported format for ADLS: {fmt}")
-

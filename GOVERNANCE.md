@@ -45,4 +45,3 @@ Participation in this project is governed by the Contributor Covenant. See `CODE
 ## Changes to this Document
 
 Propose changes via PR. Unless there is explicit objection from a maintainer within 5 business days, changes will be merged under lazy consensus. The Lead Maintainer may make immediate fixes for clarity or urgent policy needs.
-

@@ -14,4 +14,3 @@ def console() -> Console:
     if _console is None:
         _console = Console(theme=Theme({"info": "cyan", "warn": "yellow", "error": "bold red"}))
     return _console
-

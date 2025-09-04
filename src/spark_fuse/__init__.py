@@ -13,4 +13,3 @@ def _pkg_version() -> str:
 
 
 __version__ = _pkg_version()
-

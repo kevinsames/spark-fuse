@@ -24,7 +24,9 @@ app = typer.Typer(name="spark-fuse", help="PySpark toolkit: connectors, catalogs
 
 
 @app.callback()
-def _main(version: Optional[bool] = typer.Option(None, "--version", is_flag=True, help="Show version")):
+def _main(
+    version: Optional[bool] = typer.Option(None, "--version", is_flag=True, help="Show version"),
+):
     if version:
         console().print(f"spark-fuse {__version__}")
         raise typer.Exit(code=0)
@@ -54,7 +56,9 @@ def read_cmd(
 
     spark = create_session(app_name="spark-fuse-read")
     df = connector.read(spark, path, fmt=fmt)
-    console().print(Panel.fit(f"Loaded with connector: {connector.name}", title="Info", style="info"))
+    console().print(
+        Panel.fit(f"Loaded with connector: {connector.name}", title="Info", style="info")
+    )
     df.show(show, truncate=False)
     console().print(f"Schema: {df.schema.simpleString()}")
 
@@ -77,11 +81,15 @@ def uc_register_table_cmd(
     catalog: str = typer.Option(..., help="Unity Catalog name"),
     schema: str = typer.Option(..., help="Schema name"),
     table: str = typer.Option(..., help="Table name"),
-    path: str = typer.Option(..., help="External Delta location (abfss:// or dbfs:/ or onelake://)"),
+    path: str = typer.Option(
+        ..., help="External Delta location (abfss:// or dbfs:/ or onelake://)"
+    ),
 ):
     """Register an external Delta table in Unity Catalog."""
     spark = create_session(app_name="spark-fuse-uc-register")
-    unity.register_external_delta_table(spark, catalog=catalog, schema=schema, table=table, location=path)
+    unity.register_external_delta_table(
+        spark, catalog=catalog, schema=schema, table=table, location=path
+    )
     console().print(Panel.fit("Unity Catalog registration completed", style="info"))
 
 
@@ -100,7 +108,10 @@ def hive_register_external_cmd(
 @app.command("fabric-register")
 def fabric_register_cmd(
     table: str = typer.Option(..., help="Table name to create in current catalog/database"),
-    path: str = typer.Option(..., help="OneLake Delta path (onelake:// or abfss://...onelake.dfs.fabric.microsoft.com/...)"),
+    path: str = typer.Option(
+        ...,
+        help="OneLake Delta path (onelake:// or abfss://...onelake.dfs.fabric.microsoft.com/...)",
+    ),
 ):
     """Register an external Delta table backed by a Fabric OneLake location."""
     spark = create_session(app_name="spark-fuse-fabric-register")

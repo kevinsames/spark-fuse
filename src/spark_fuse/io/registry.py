@@ -34,4 +34,3 @@ def connector_for_path(path: str) -> Optional[Connector]:
         except Exception:
             continue
     return None
-

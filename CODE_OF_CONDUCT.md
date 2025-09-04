@@ -48,4 +48,3 @@ Community leaders will follow these guidelines in determining the consequences f
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
 
 For answers to common questions about this code of conduct, see the FAQ at https://www.contributor-covenant.org/faq.
-
