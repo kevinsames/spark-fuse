@@ -1,0 +1,128 @@
+[
+  {
+    "title": "Config profiles with Pydantic",
+    "labels": ["enhancement", "utils", "config", "roadmap"],
+    "milestone": "v0.2.0",
+    "body_path": ".github/roadmap_issues/0020-config-profiles.md"
+  },
+  {
+    "title": "Load config from YAML/env + CLI profile flag",
+    "labels": ["enhancement", "cli", "utils", "config", "roadmap"],
+    "milestone": "v0.2.0",
+    "body_path": ".github/roadmap_issues/0021-config-loading.md"
+  },
+  {
+    "title": "ABFS OAuth config helpers + docs",
+    "labels": ["docs", "connectors", "adls", "roadmap"],
+    "milestone": "v0.2.0",
+    "body_path": ".github/roadmap_issues/0022-abfs-oauth-docs.md"
+  },
+  {
+    "title": "Fabric path normalization (onelake:// ↔ abfss://onelake)",
+    "labels": ["enhancement", "connectors", "fabric", "roadmap"],
+    "milestone": "v0.2.0",
+    "body_path": ".github/roadmap_issues/0023-fabric-path-normalization.md"
+  },
+  {
+    "title": "Databricks: runs get/get-output + --wait",
+    "labels": ["enhancement", "databricks", "cli", "roadmap"],
+    "milestone": "v0.3.0",
+    "body_path": ".github/roadmap_issues/0030-dbx-runs-get-wait.md"
+  },
+  {
+    "title": "Databricks: clusters/list and jobs/create minimal wrappers",
+    "labels": ["enhancement", "databricks", "roadmap"],
+    "milestone": "v0.3.0",
+    "body_path": ".github/roadmap_issues/0031-dbx-clusters-jobs.md"
+  },
+  {
+    "title": "Unity Catalog: external locations + storage credentials helpers",
+    "labels": ["enhancement", "catalogs", "unity", "roadmap"],
+    "milestone": "v0.4.0",
+    "body_path": ".github/roadmap_issues/0040-uc-external-locations.md"
+  },
+  {
+    "title": "Unity Catalog: grant/revoke privileges helpers",
+    "labels": ["enhancement", "catalogs", "unity", "roadmap"],
+    "milestone": "v0.4.0",
+    "body_path": ".github/roadmap_issues/0041-uc-grants.md"
+  },
+  {
+    "title": "Hive: location utilities and safer external registration",
+    "labels": ["enhancement", "catalogs", "hive", "roadmap"],
+    "milestone": "v0.4.0",
+    "body_path": ".github/roadmap_issues/0042-hive-location-utils.md"
+  },
+  {
+    "title": "SCD2 writer: tests, docs, and examples",
+    "labels": ["enhancement", "utils", "scd2", "roadmap"],
+    "milestone": "v0.4.0",
+    "body_path": ".github/roadmap_issues/0043-scd2-hardening.md"
+  },
+  {
+    "title": "Connector auto-discovery via entry points",
+    "labels": ["enhancement", "connectors", "roadmap"],
+    "milestone": "v0.5.0",
+    "body_path": ".github/roadmap_issues/0050-plugin-autodiscovery.md"
+  },
+  {
+    "title": "Registry diagnostics: show source package + version",
+    "labels": ["enhancement", "connectors", "roadmap"],
+    "milestone": "v0.5.0",
+    "body_path": ".github/roadmap_issues/0051-registry-diagnostics.md"
+  },
+  {
+    "title": "Qdrant connector: read/write + similarity search",
+    "labels": ["enhancement", "connectors", "qdrant", "roadmap"],
+    "milestone": "v0.5.0",
+    "body_path": ".github/roadmap_issues/0052-qdrant-connector.md"
+  },
+  {
+    "title": "Docs: tutorials and CLI recipes",
+    "labels": ["docs", "roadmap"],
+    "milestone": "v0.6.0",
+    "body_path": ".github/roadmap_issues/0060-docs-tutorials.md"
+  },
+  {
+    "title": "Examples: ADLS, Fabric, UC end-to-end",
+    "labels": ["docs", "connectors", "catalogs", "roadmap"],
+    "milestone": "v0.6.0",
+    "body_path": ".github/roadmap_issues/0061-examples-e2e.md"
+  },
+  {
+    "title": "Structured logging + rich error types",
+    "labels": ["enhancement", "utils", "roadmap"],
+    "milestone": "v0.7.0",
+    "body_path": ".github/roadmap_issues/0070-structured-logging.md"
+  },
+  {
+    "title": "Compatibility: Python 3.12 + Spark 3.5 matrix",
+    "labels": ["ci", "task", "roadmap"],
+    "milestone": "v0.7.0",
+    "body_path": ".github/roadmap_issues/0071-compat-matrix.md"
+  },
+  {
+    "title": "CI enhancements: caching, selective tests, nightly",
+    "labels": ["ci", "task", "roadmap"],
+    "milestone": "v0.7.0",
+    "body_path": ".github/roadmap_issues/0072-ci-enhancements.md"
+  },
+  {
+    "title": "Investigation: Fabric Lakehouse admin APIs",
+    "labels": ["investigation", "connectors", "fabric", "roadmap"],
+    "milestone": "Backlog",
+    "body_path": ".github/roadmap_issues/1000-fabric-admin-apis.md"
+  },
+  {
+    "title": "Optional telemetry (opt-in) for usage metrics",
+    "labels": ["enhancement", "utils", "roadmap"],
+    "milestone": "Backlog",
+    "body_path": ".github/roadmap_issues/1001-telemetry-opt-in.md"
+  },
+  {
+    "title": "Devcontainer + Docker images for examples",
+    "labels": ["devx", "docs", "roadmap"],
+    "milestone": "Backlog",
+    "body_path": ".github/roadmap_issues/1002-devcontainers.md"
+  }
+]
