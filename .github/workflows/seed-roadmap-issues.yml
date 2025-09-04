@@ -3,6 +3,10 @@ name: Seed Roadmap Issues
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   seed:
     runs-on: ubuntu-latest
