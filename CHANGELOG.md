@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.1.2] - 2025-09-04
+### Changed
+- CI/Release: trigger publish workflow on tag pushes matching `v*`.
+- CI/Release: validate built artifacts with `twine check` before upload.
+
 ## [0.1.1] - 2025-09-04
 ### Fixed
 - Packaging: fix Hatch src-layout config for editable installs (`pip install -e .[dev]`).
@@ -33,6 +38,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/kevinsames/spark-fuse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kevinsames/spark-fuse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kevinsames/spark-fuse/releases/tag/v0.1.0
