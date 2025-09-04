@@ -44,6 +44,8 @@ dev = [
   "pytest-cov>=4",
   "ruff>=0.4",
   "pre-commit>=3",
+  "build>=1",
+  "twine>=5",
 ]
 
 [project.scripts]
@@ -57,3 +59,13 @@ testpaths = ["tests"]
 line-length = 100
 target-version = "py39"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/spark_fuse"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/spark_fuse",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
