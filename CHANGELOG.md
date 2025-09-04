@@ -5,13 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
+
+## [0.1.1] - 2025-09-04
+### Fixed
+- Packaging: fix Hatch src-layout config for editable installs (`pip install -e .[dev]`).
+
 ### Added
 - SCD2 Delta writer helper `scd2_upsert` in `spark_fuse.utils.scd2`.
 - Qdrant connector stub (`qdrant://` URIs) and optional extra `qdrant` (`qdrant-client>=1.8`).
 - Project docs: GOVERNANCE.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md, SECURITY.md, INSTALL, MAINTAINERS, authors.md, roadmap.md.
 
 ### Changed
-- Packaging: publish workflow targets protected `pypi` environment.
+- CI/Release: publish workflow targets protected `pypi` environment; switch to Trusted Publishing.
 
 ## [0.1.0] - 2024-09-01
 ### Added
@@ -28,5 +33,6 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/your-org/spark-fuse/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/your-org/spark-fuse/releases/tag/v0.1.0
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/kevinsames/spark-fuse/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/kevinsames/spark-fuse/releases/tag/v0.1.0
