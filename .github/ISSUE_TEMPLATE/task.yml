@@ -1,0 +1,36 @@
+name: Task
+description: Track a scoped maintenance or implementation task
+title: "[Task]: "
+labels: [task]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs to be done and why?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist of conditions for completion.
+      placeholder: |
+        - [ ] Behavior validated / test(s) updated
+        - [ ] Docs or CLI help updated (if applicable)
+        - [ ] Lint/CI passes
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in and out of scope for this task?
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / blockers
+      description: Related issues, PRs, or external constraints.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Implementation notes, approaches, or risks.

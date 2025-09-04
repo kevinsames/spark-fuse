@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest an idea or improvement for spark-fuse
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What’s the user need or pain this feature addresses?
+      placeholder: As a ..., I want ..., so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the desired behavior and high-level design.
+      placeholder: How should this work? CLI flags, APIs, examples, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches and why they’re less ideal.
+  - type: checkboxes
+    id: components
+    attributes:
+      label: Affected areas
+      options:
+        - label: Connectors — ADLS Gen2
+        - label: Connectors — Microsoft Fabric (OneLake)
+        - label: Connectors — Databricks / DBFS / Jobs
+        - label: Connectors — Qdrant (vectors)
+        - label: Catalogs — Unity Catalog
+        - label: Catalogs — Hive Metastore
+        - label: Spark helpers
+        - label: CLI
+        - label: Utils / SCD2
+        - label: Docs / Site
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / acceptance criteria
+      description: What must be true to consider this complete?
+      placeholder: Bullet list of criteria, with examples.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Links, screenshots, related issues.

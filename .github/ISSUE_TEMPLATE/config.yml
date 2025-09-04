@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security reports
+    url: https://github.com/kevinsames/spark-fuse/security/policy
+    about: Please read our SECURITY policy for reporting vulnerabilities.
+  - name: Questions & discussions
+    url: https://github.com/kevinsames/spark-fuse/discussions
+    about: Use GitHub Discussions for Q&A and ideas.
