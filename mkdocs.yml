@@ -12,9 +12,9 @@ theme:
     - content.code.copy
     - toc.integrate
   palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
+    - scheme: slate
+      primary: deep purple
+      accent: purple
 markdown_extensions:
   - admonition
   - tables
