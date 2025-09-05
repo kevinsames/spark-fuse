@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.1.6] - 2025-09-05
+### Changed
+- Rename module `spark_fuse.utils.scd2` to `spark_fuse.utils.scd` (update imports accordingly).
+- Databricks and Fabric connectors route Delta writes through SCD helpers (`apply_scd`) when `fmt='delta'`.
+
+### Added
+- Tests for SCD utilities: SCD1 de-dup/update, SCD2 versioning, and dispatcher.
+
+### Fixed
+- `scd2_upsert`: accept SQL string for `load_ts_expr`; compute next version using historical max per key.
+- Spark session helper: add Delta Lake package via version map to match local PySpark, avoiding classpath mismatches.
+- Test fixture: bind Spark driver to localhost and disable UI to avoid port issues in CI/sandboxes.
+
 ## [0.1.5] - 2025-09-04
 ### Added
 - Documentation site: MkDocs + Material theme under `docs/`, with GitHub Pages workflow to build and deploy.
@@ -54,7 +67,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kevinsames/spark-fuse/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kevinsames/spark-fuse/compare/v0.1.2...v0.1.3

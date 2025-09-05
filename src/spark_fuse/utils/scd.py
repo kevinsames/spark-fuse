@@ -279,7 +279,13 @@ def scd2_upsert(
     )  # unit separator as delimiter
     source_hashed = source_df.withColumn(hash_col, row_hash_expr)
 
-    ts_col = load_ts_expr or F.current_timestamp()
+    # Accept either a Column or a SQL string for load timestamp
+    if load_ts_expr is None:
+        ts_col = F.current_timestamp()
+    elif isinstance(load_ts_expr, str):  # type: ignore[arg-type]
+        ts_col = F.expr(load_ts_expr)
+    else:
+        ts_col = load_ts_expr
 
     # Does target exist?
     target_exists = True
@@ -340,28 +346,38 @@ def scd2_upsert(
     tgt_current = (
         _read_target_df(spark, target)
         .where(F.col(current_col) == F.lit(True))
-        .select(*business_keys, version_col)
+        .select(*business_keys)
     )
 
     s = source_hashed.alias("s")
-    t = tgt_current.alias("t")
-    join_cond = [s[k] == t[k] for k in business_keys]
-    joined = s.join(t, on=join_cond, how="left")
+    tcur = tgt_current.alias("tcur")
+    join_cond = [s[k] == tcur[k] for k in business_keys]
+    joined = s.join(tcur, on=join_cond, how="left")
 
-    # Determine which rows need insertion: new keys (t.key is null) OR changed (handled implicitly because step 1 closed currents)
-    is_new_key = t[business_keys[0]].isNull()
+    # Determine which rows need insertion: new keys (no current row matches) OR changed (step 1 closed current row)
+    is_new_or_changed = tcur[business_keys[0]].isNull()
 
-    # If a key existed but did not change, there will still be a current row in target, so NOT new and NOT changed => do not insert
-    rows_to_insert = joined.where(is_new_key).select([s[c] for c in source_hashed.columns])
+    # If a key existed and did not change, there will still be a current row present; exclude those.
+    rows_to_insert = joined.where(is_new_or_changed).select([s[c] for c in source_hashed.columns])
 
-    # For changed keys, after step 1 there is no current row; they also appear as new (left-join null). So same filter covers both new & changed.
+    # Join with max version per key from target history to increment correctly for changed keys
+    tgt_max_ver = (
+        _read_target_df(spark, target)
+        .groupBy(*business_keys)
+        .agg(F.max(F.col(version_col)).alias("__prev_version"))
+    )
+
+    rows_with_prev = rows_to_insert.join(tgt_max_ver, on=list(business_keys), how="left")
 
     # Compute next version per key: coalesce(prev_version, 0) + 1
     to_insert = (
-        rows_to_insert.withColumn(effective_col, ts_col)
+        rows_with_prev.withColumn(effective_col, ts_col)
         .withColumn(expiry_col, F.lit(None).cast("timestamp"))
         .withColumn(current_col, F.lit(True))
-        .withColumn(version_col, F.coalesce(F.col(version_col), F.lit(0)).cast("bigint") + F.lit(1))
+        .withColumn(
+            version_col, F.coalesce(F.col("__prev_version"), F.lit(0)).cast("bigint") + F.lit(1)
+        )
+        .drop("__prev_version")
     )
 
     _write_append(to_insert, target)
