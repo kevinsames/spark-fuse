@@ -78,7 +78,7 @@ class DatabricksDBFSConnector(Connector):
         # When writing Delta, use SCD upsert helpers
         if fmt == "delta":
             # Import at call time to avoid importing Delta libs unless needed
-            from ..utils.scd import SCDMode, apply_scd  # type: ignore
+            from ..utils.scd import SCDMode, apply_scd
 
             def _as_seq(val: Any) -> Optional[Sequence[str]]:
                 if val is None:
