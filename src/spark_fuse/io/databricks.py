@@ -11,12 +11,9 @@ from pyspark.sql import functions as F
 from .base import Connector
 from .registry import register_connector
 
-try:
-    # Imported lazily in write(); kept here for type hints/static analysis
-    from ..utils.scd import SCDMode, apply_scd  # type: ignore
-except Exception:  # pragma: no cover - optional at runtime until used
-    SCDMode = None  # type: ignore
-    apply_scd = None  # type: ignore
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..utils.scd import SCDMode, apply_scd
 
 
 @register_connector
