@@ -3,6 +3,20 @@ from typing import Dict, Optional
 
 from pyspark.sql import SparkSession
 
+# Recommended Delta Lake package per PySpark minor version.
+# Keep this map aligned with the Delta Lake compatibility matrix.
+# Summary (as of 2025-09):
+# - PySpark 3.3 → delta-spark 2.3.x
+# - PySpark 3.4 → delta-spark 2.4.x
+# - PySpark 3.5 → delta-spark 3.2.x
+# You can override the choice with the environment variable
+# SPARK_FUSE_DELTA_VERSION if you need a specific version.
+DELTA_PYSPARK_COMPAT: Dict[str, str] = {
+    "3.3": "2.3.0",
+    "3.4": "2.4.0",
+    "3.5": "3.2.0",
+}
+
 
 def detect_environment() -> str:
     """Detect a likely runtime environment: databricks, fabric, or local.
@@ -40,13 +54,7 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
             ver = pyspark.__version__
             major, minor, *_ = ver.split(".")
             key = f"{major}.{minor}"
-            # Minimal map; expand as needed
-            compat = {
-                "3.3": "2.3.0",
-                "3.4": "2.4.0",
-                "3.5": "3.2.0",
-            }
-            delta_ver = compat.get(key, "3.2.0")
+            delta_ver = DELTA_PYSPARK_COMPAT.get(key, "3.2.0")
         except Exception:
             # Fallback that works for recent Spark
             delta_ver = "3.2.0"
