@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Optional, Sequence, Union
 
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window
@@ -192,7 +192,7 @@ def scd2_upsert(
     current_col: str = "is_current",
     version_col: str = "version",
     hash_col: str = "row_hash",
-    load_ts_expr: Optional[F.Column] = None,
+    load_ts_expr: Optional[Union[str, F.Column]] = None,
     null_key_policy: str = "error",  # "error" | "drop"
     create_if_not_exists: bool = True,
 ) -> None:
@@ -219,8 +219,10 @@ def scd2_upsert(
         Columns to choose the *latest* record per `dedupe_keys`. Highest values win.
     effective_col / expiry_col / current_col / version_col / hash_col : str
         Target SCD2 metadata columns.
-    load_ts_expr : Column, optional
-        Timestamp to use for `effective_start_ts`. Defaults to `current_timestamp()`.
+    load_ts_expr : Union[str, Column], optional
+        Timestamp to use for `effective_start_ts`. Accepts a PySpark Column or a SQL
+        expression string (e.g., "current_timestamp()" or "to_timestamp('2020-01-01 00:00:00')").
+        Defaults to `current_timestamp()`.
     null_key_policy : {"error","drop"}
         What to do if any business key is null in source.
     create_if_not_exists : bool
