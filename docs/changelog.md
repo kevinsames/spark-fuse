@@ -10,6 +10,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Changed
 - Rename module `spark_fuse.utils.scd2` to `spark_fuse.utils.scd` (update imports accordingly).
 - Databricks and Fabric connectors route Delta writes through SCD helpers (`apply_scd`) when `fmt='delta'`.
+- IO connectors: extract shared option parsers (`as_seq`, `as_bool`) to `spark_fuse.io.utils` to remove duplication.
 
 ### Added
 - Tests for SCD utilities: SCD1 de-dup/update, SCD2 versioning, and dispatcher.

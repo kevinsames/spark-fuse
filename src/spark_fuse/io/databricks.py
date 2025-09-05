@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional
 
 import requests
 from pyspark.sql import DataFrame, SparkSession
@@ -10,6 +10,7 @@ from pyspark.sql import functions as F
 
 from .base import Connector
 from .registry import register_connector
+from .utils import as_seq, as_bool
 
 
 @register_connector
@@ -73,26 +74,6 @@ class DatabricksDBFSConnector(Connector):
             # Import at call time to avoid importing Delta libs unless needed
             from ..utils.scd import SCDMode, apply_scd
 
-            def _as_seq(val: Any) -> Optional[Sequence[str]]:
-                if val is None:
-                    return None
-                if isinstance(val, str):
-                    return [s.strip() for s in val.split(",") if s.strip()]
-                return list(val)
-
-            def _as_bool(val: Any, default: bool) -> bool:
-                if val is None:
-                    return default
-                if isinstance(val, bool):
-                    return val
-                if isinstance(val, str):
-                    v = val.strip().lower()
-                    if v in {"1", "true", "yes", "y"}:
-                        return True
-                    if v in {"0", "false", "no", "n"}:
-                        return False
-                return bool(val)
-
             scd_mode_opt = (
                 options.pop("scd_mode", None) or options.pop("scd", None) or "scd2"
             ).upper()
@@ -103,12 +84,12 @@ class DatabricksDBFSConnector(Connector):
             business_keys = options.pop("business_keys", None)
             if business_keys is None:
                 raise ValueError("business_keys must be provided for SCD writes to Delta")
-            business_keys = _as_seq(business_keys)  # type: ignore
+            business_keys = as_seq(business_keys)  # type: ignore
             assert business_keys and len(business_keys) > 0
 
-            tracked_columns = _as_seq(options.pop("tracked_columns", None))
-            dedupe_keys = _as_seq(options.pop("dedupe_keys", None))
-            order_by = _as_seq(options.pop("order_by", None))
+            tracked_columns = as_seq(options.pop("tracked_columns", None))
+            dedupe_keys = as_seq(options.pop("dedupe_keys", None))
+            order_by = as_seq(options.pop("order_by", None))
 
             # SCD2-specific options (also used by SCD1 for hash_col)
             effective_col = options.pop("effective_col", "effective_start_ts")
@@ -121,7 +102,7 @@ class DatabricksDBFSConnector(Connector):
             load_ts_expr = F.expr(load_ts_expr_opt) if isinstance(load_ts_expr_opt, str) else None
 
             null_key_policy = options.pop("null_key_policy", "error")
-            create_if_not_exists = _as_bool(options.pop("create_if_not_exists", True), True)
+            create_if_not_exists = as_bool(options.pop("create_if_not_exists", True), True)
 
             kwargs: Dict[str, Any] = {
                 "business_keys": business_keys,
