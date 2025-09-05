@@ -11,10 +11,6 @@ from pyspark.sql import functions as F
 from .base import Connector
 from .registry import register_connector
 
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from ..utils.scd import SCDMode, apply_scd
-
 
 @register_connector
 class DatabricksDBFSConnector(Connector):
