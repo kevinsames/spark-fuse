@@ -84,8 +84,8 @@ class DatabricksDBFSConnector(Connector):
             business_keys = options.pop("business_keys", None)
             if business_keys is None:
                 raise ValueError("business_keys must be provided for SCD writes to Delta")
-            business_keys = as_seq(business_keys)  # type: ignore
-            assert business_keys and len(business_keys) > 0
+            if not business_keys or len(business_keys) == 0:
+                raise ValueError("business_keys must be a non-empty sequence for SCD writes to Delta")
 
             tracked_columns = as_seq(options.pop("tracked_columns", None))
             dedupe_keys = as_seq(options.pop("dedupe_keys", None))
