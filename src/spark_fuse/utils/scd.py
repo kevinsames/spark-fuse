@@ -15,6 +15,10 @@ __all__ = [
 ]
 
 
+# Delimiter used for stable row-hash concatenation (Unit Separator)
+UNIT_SEPARATOR = "\u241f"
+
+
 class SCDMode(str, Enum):
     SCD1 = "SCD1"
     SCD2 = "SCD2"
@@ -120,7 +124,7 @@ def scd1_upsert(
 
     # Hash tracked columns
     hash_expr_inputs = [_coalesce_cast_to_string(F.col(c)) for c in tracked_columns]
-    row_hash_expr = F.sha2(F.concat_ws("\u241f", *hash_expr_inputs), 256)
+    row_hash_expr = F.sha2(F.concat_ws(UNIT_SEPARATOR, *hash_expr_inputs), 256)
     src_hashed = source_df.withColumn(hash_col, row_hash_expr)
 
     # Create target if missing
@@ -275,7 +279,7 @@ def scd2_upsert(
     # Compute deterministic row hash over tracked columns
     hash_expr_inputs = [_coalesce_cast_to_string(F.col(c)) for c in tracked_columns]
     row_hash_expr = F.sha2(
-        F.concat_ws("\u241f", *hash_expr_inputs), 256
+        F.concat_ws(UNIT_SEPARATOR, *hash_expr_inputs), 256
     )  # unit separator as delimiter
     source_hashed = source_df.withColumn(hash_col, row_hash_expr)
 
