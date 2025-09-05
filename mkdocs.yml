@@ -63,4 +63,4 @@ nav:
       - Catalogs — Hive: api/catalog_hive.md
       - Utils — DataFrame: api/utils_dataframe.md
       - Utils — Logging: api/utils_logging.md
-      - Utils — SCD2: api/utils_scd2.md
+      - Utils — SCD2: api/utils_scd.md

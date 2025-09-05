@@ -32,7 +32,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Packaging: fix Hatch src-layout config for editable installs (`pip install -e .[dev]`).
 
 ### Added
-- SCD2 Delta writer helper `scd2_upsert` in `spark_fuse.utils.scd2`.
+- SCD2 Delta writer helper `scd2_upsert` in `spark_fuse.utils.scd`.
 - Qdrant connector stub (`qdrant://` URIs) and optional extra `qdrant` (`qdrant-client>=1.8`).
 - Project docs: GOVERNANCE.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md, SECURITY.md, INSTALL, MAINTAINERS, authors.md, roadmap.md.
 
