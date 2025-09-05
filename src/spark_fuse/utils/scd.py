@@ -282,7 +282,7 @@ def scd2_upsert(
     # Accept either a Column or a SQL string for load timestamp
     if load_ts_expr is None:
         ts_col = F.current_timestamp()
-    elif isinstance(load_ts_expr, str):  # type: ignore[arg-type]
+    elif isinstance(load_ts_expr, str):
         ts_col = F.expr(load_ts_expr)
     else:
         ts_col = load_ts_expr
