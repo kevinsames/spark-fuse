@@ -264,7 +264,7 @@ def scd2_upsert(
     if dedupe_keys is None:
         dedupe_keys = list(business_keys)
 
-    if order_by and len(order_by) > 0:
+    if order_by:
         w = Window.partitionBy(*[F.col(k) for k in dedupe_keys]).orderBy(
             *[F.col(c).desc_nulls_last() for c in order_by]
         )
