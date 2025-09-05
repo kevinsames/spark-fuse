@@ -72,7 +72,7 @@ class FabricLakehouseConnector(Connector):
             raise ValueError(f"Invalid Fabric OneLake path: {path}")
         fmt = (fmt or options.pop("format", None) or "delta").lower()
         if fmt == "delta":
-            from ..utils.scd import SCDMode, apply_scd  # type: ignore
+            from ..utils.scd import SCDMode, apply_scd
 
             def _as_seq(val: Any) -> Optional[Sequence[str]]:
                 if val is None:
