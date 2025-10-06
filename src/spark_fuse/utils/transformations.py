@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Union
+from typing import Any, Iterable, Mapping, Optional, Tuple, Union
 
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.types import DataType
@@ -10,6 +10,7 @@ __all__ = [
     "with_constants",
     "cast_columns",
     "normalize_whitespace",
+    "split_by_date_formats",
 ]
 
 
@@ -136,4 +137,112 @@ def normalize_whitespace(
         if trim_ends:
             normalized = F.trim(normalized)
         result = result.withColumn(name, normalized)
+    return result
+
+
+_HANDLE_ERROR_MODES = {"null", "strict", "default"}
+
+
+def split_by_date_formats(
+    df: DataFrame,
+    column: str,
+    formats: Iterable[str],
+    *,
+    handle_errors: str = "null",
+    default_value: Optional[str] = None,
+    return_unmatched: bool = False,
+    output_column: Optional[str] = None,
+) -> Union[DataFrame, Tuple[DataFrame, DataFrame]]:
+    """Split ``df`` into per-format partitions with safely parsed date columns.
+
+    Args:
+        column: Name of the string column containing date representations.
+        formats: Iterable of date format strings, evaluated in order.
+        handle_errors: Strategy for unmatched rows (``"null"``, ``"strict"``, ``"default"``).
+        default_value: Fallback date string when ``handle_errors="default"``.
+        return_unmatched: When ``True``, also return the unmatched rows DataFrame.
+        output_column: Optional name for the parsed date column; defaults to ``f"{column}_date"``.
+
+    Returns:
+        The combined DataFrame containing all parsed rows.
+
+        When ``return_unmatched`` is ``True``, also returns the unmatched rows
+        DataFrame as a second element.
+
+    Raises:
+        TypeError: If ``formats`` is a string or contains non-string entries.
+        ValueError: For missing columns, duplicate output column, invalid modes, or
+            unmatched rows when in ``strict`` mode.
+    """
+
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found in DataFrame")
+
+    parsed_column = output_column or f"{column}_date"
+    if parsed_column in df.columns and parsed_column != column:
+        raise ValueError(f"Output column '{parsed_column}' already exists")
+
+    if isinstance(formats, str):
+        raise TypeError("formats must be an iterable of strings, not a string")
+
+    format_list = list(dict.fromkeys(formats))
+    if not format_list:
+        raise ValueError("At least one date format must be provided")
+
+    if any(not isinstance(fmt, str) for fmt in format_list):
+        raise TypeError("Each format must be a string")
+
+    mode = handle_errors.lower()
+    if mode not in _HANDLE_ERROR_MODES:
+        raise ValueError(f"Unsupported handle_errors mode '{handle_errors}'")
+
+    if mode == "default" and default_value is None:
+        raise ValueError("default_value must be provided when handle_errors='default'")
+
+    parsed_expressions = [F.to_date(F.col(column), fmt) for fmt in format_list]
+    if len(parsed_expressions) == 1:
+        parsed_expr = parsed_expressions[0]
+    else:
+        parsed_expr = F.coalesce(*parsed_expressions)
+
+    format_idx_expr = None
+    for idx, expr in enumerate(parsed_expressions):
+        candidate = F.when(expr.isNotNull(), F.lit(idx))
+        format_idx_expr = (
+            candidate if format_idx_expr is None else format_idx_expr.otherwise(candidate)
+        )
+    if format_idx_expr is None:
+        format_idx_expr = F.lit(None)
+
+    format_idx_column = f"__{column}_format_idx__"
+    while format_idx_column in df.columns:
+        format_idx_column = f"_{format_idx_column}"
+
+    df_with_meta = df.withColumn(parsed_column, parsed_expr).withColumn(
+        format_idx_column, format_idx_expr
+    )
+
+    partitions: list[DataFrame] = []
+    for idx, _ in enumerate(format_list):
+        group_df = df_with_meta.filter(F.col(format_idx_column) == idx).drop(format_idx_column)
+        partitions.append(group_df)
+
+    unmatched_df = df_with_meta.filter(F.col(format_idx_column).isNull()).drop(format_idx_column)
+
+    if mode == "strict":
+        if unmatched_df.limit(1).collect():
+            raise ValueError("Unmatched rows detected while handle_errors='strict'")
+    elif mode == "default":
+        default_df = unmatched_df.withColumn(parsed_column, F.lit(default_value).cast("date"))
+        partitions.append(default_df)
+    else:
+        partitions.append(unmatched_df)
+
+    result_df = partitions[0]
+    for part in partitions[1:]:
+        result_df = result_df.unionByName(part)
+
+    result: Union[DataFrame, Tuple[DataFrame, DataFrame]] = result_df
+    if return_unmatched:
+        result = (result_df, unmatched_df)
     return result
