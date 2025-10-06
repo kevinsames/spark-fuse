@@ -64,3 +64,4 @@ nav:
       - Utils — DataFrame: api/utils_dataframe.md
       - Utils — Logging: api/utils_logging.md
       - Utils — SCD: api/utils_scd.md
+      - Utils — Transformations: api/utils_transformations.md

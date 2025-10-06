@@ -6,6 +6,7 @@ spark-fuse is an open-source toolkit for PySpark — providing utilities, connec
 - Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), and Databricks DBFS (`dbfs:/`).
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
+- DataFrame utilities for previews, name management, casts, whitespace cleanup, and resilient date parsing.
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
 ## Quickstart
