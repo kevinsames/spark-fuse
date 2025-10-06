@@ -203,29 +203,29 @@ def scd2_upsert(
       2) Insert new active rows for new keys or changed keys with incremented version.
 
     Args:
-        spark : SparkSession
-        source_df : DataFrame
-            Incoming dataset. Can contain duplicates; will be de-duplicated by `dedupe_keys` keeping the latest by `order_by`.
-        target : str
-            Unity Catalog table name (e.g. "catalog.schema.table") **or** Delta path (e.g. "dbfs:/path").
-        business_keys : Sequence[str]
-            Columns that uniquely identify an entity (match condition).
-        tracked_columns : Iterable[str], optional
-            Columns whose changes should produce a new version. Defaults to all non-metadata, non-key columns.
-        dedupe_keys : Sequence[str], optional
-            Keys used to de-duplicate input before merge. Defaults to `business_keys`.
-        order_by : Sequence[str], optional
-            Columns to choose the *latest* record per `dedupe_keys`. Highest values win.
-        effective_col / expiry_col / current_col / version_col / hash_col : str
-            Target SCD2 metadata columns.
-        load_ts_expr : Union[str, Column], optional
+        spark: SparkSession used to read/write Delta tables.
+        source_df: DataFrame containing incoming records. Can include duplicates; these are
+            de-duplicated by `dedupe_keys`, keeping the latest row by `order_by`.
+        target: Unity Catalog table name (for example, ``catalog.schema.table``) or Delta path
+            (for example, ``dbfs:/path``).
+        business_keys: Columns that uniquely identify an entity (merge condition).
+        tracked_columns: Columns whose changes trigger a new version. Defaults to all non-key,
+            non-metadata columns.
+        dedupe_keys: Columns used to de-duplicate input before merge. Defaults to ``business_keys``.
+        order_by: Columns used to choose the most recent record per ``dedupe_keys``. Highest values
+            win.
+        effective_col: Name of the effective-start timestamp column in the target dataset.
+        expiry_col: Name of the effective-end timestamp column in the target dataset.
+        current_col: Name of the boolean "is current" column in the target dataset.
+        version_col: Name of the version column in the target dataset.
+        hash_col: Name of the hash column used to detect row changes.
+        load_ts_expr: PySpark Column or SQL expression string that provides the effective-start
             Timestamp to use for `effective_start_ts`. Accepts a PySpark Column or a SQL
             expression string (e.g., "current_timestamp()" or "to_timestamp('2020-01-01 00:00:00')").
             Defaults to `current_timestamp()`.
-        null_key_policy : {"error","drop"}
-            What to do if any business key is null in source.
-        create_if_not_exists : bool
-            If target doesn't exist, bootstrap table with initial insert.
+        null_key_policy: Policy for null business keys in ``source_df``. Either ``"error"`` (default)
+            or ``"drop"``.
+        create_if_not_exists: When ``True`` (default), create the target table if it does not exist.
     """
 
     if not business_keys:
