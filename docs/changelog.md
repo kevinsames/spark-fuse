@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.1.7] - 2025-09-06
+### Added
+- Transformation utilities module offering column renaming, casting, literal injection, whitespace cleanup, and multi-format date parsing helpers.
+- Test coverage for the transformation utilities, including `split_by_date_formats` error modes.
+
+### Documentation
+- Added API reference page for transformation utilities and highlighted the new helpers in the feature overview.
+
 ## [0.1.6] - 2025-09-05
 ### Changed
 - Rename module `spark_fuse.utils.scd2` to `spark_fuse.utils.scd` (update imports accordingly).
@@ -68,7 +76,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kevinsames/spark-fuse/compare/v0.1.3...v0.1.4
