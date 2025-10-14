@@ -323,6 +323,7 @@ def _fetch_llm_mapping(
     *,
     max_retries: int = 3,
     request_timeout: int = 30,
+    temperature: Optional[float] = 0.0,
 ) -> Optional[str]:
     """Invoke the LLM API to map ``value`` to one of ``target_values``.
 
@@ -335,6 +336,9 @@ def _fetch_llm_mapping(
         model: Chat model or deployment name.
         max_retries: Maximum attempts before giving up.
         request_timeout: Per-request timeout (seconds) passed to ``requests``.
+        temperature: Sampling temperature to include in the payload. Set to ``None`` to
+            let the provider apply its default temperature (useful when certain models
+            reject explicit values).
 
     Returns:
         The canonical value chosen by the model, or ``None`` when the model abstains or
@@ -352,17 +356,20 @@ def _fetch_llm_mapping(
         "If none apply, respond with 'None'."
     )
 
-    payload: Dict[str, Any] = {
-        "messages": [
-            {"role": "system", "content": "You are a data normalization assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0,
-    }
-    if not use_azure:
-        payload["model"] = model
+    active_temperature = temperature
 
     for attempt in range(1, max_retries + 1):
+        payload: Dict[str, Any] = {
+            "messages": [
+                {"role": "system", "content": "You are a data normalization assistant."},
+                {"role": "user", "content": prompt},
+            ],
+        }
+        if active_temperature is not None:
+            payload["temperature"] = active_temperature
+        if not use_azure:
+            payload["model"] = model
+
         try:
             response = requests.post(
                 api_url,
@@ -379,6 +386,21 @@ def _fetch_llm_mapping(
             logger.warning("Rate limit hit (HTTP 429). Backing off (attempt %s).", attempt)
             time.sleep(min(2**attempt, 60))
             continue
+
+        if response.status_code == 400 and active_temperature is not None:
+            try:
+                error_payload = response.json()
+                error_message = error_payload.get("error", {}).get("message", "")
+            except ValueError:
+                error_message = response.text
+            if "temperature" in (error_message or "").lower():
+                logger.warning(
+                    "LLM rejected temperature=%s; retrying with provider default.",
+                    active_temperature,
+                )
+                active_temperature = None
+                time.sleep(min(2**attempt, 60))
+                continue
 
         if 500 <= response.status_code < 600:
             logger.warning(
@@ -431,13 +453,16 @@ def map_column_with_llm(
     dry_run: bool = False,
     max_retries: int = 3,
     request_timeout: int = 30,
+    temperature: Optional[float] = 0.0,
 ) -> DataFrame:
     """Map ``column`` values to ``target_values`` via a scalar PySpark UDF.
 
     The transformation applies a regular user-defined function across the column, keeping
     a per-executor in-memory cache to avoid duplicate LLM calls. Spark accumulators track
     mapping statistics. When ``dry_run=True`` the UDF performs case-insensitive matching
-    only and yields ``None`` for unmatched rows without contacting the LLM.
+    only and yields ``None`` for unmatched rows without contacting the LLM. When targeting
+    models that require provider-managed sampling behaviour, set ``temperature=None`` to
+    omit the ``temperature`` parameter from LLM requests.
 
     Args:
         df: Input DataFrame whose values should be normalized.
@@ -449,6 +474,8 @@ def map_column_with_llm(
             testing and cost estimation).
         max_retries: Retry budget passed to :func:`_fetch_llm_mapping`.
         request_timeout: Timeout in seconds for each HTTP request.
+        temperature: LLM sampling temperature. Use ``None`` to skip explicitly setting it
+            (some provider models accept only their default temperature).
 
     Returns:
         A new DataFrame with an additional ``<column>_mapped`` string column containing
@@ -531,6 +558,7 @@ def map_column_with_llm(
                     model=model,
                     max_retries=max_retries,
                     request_timeout=request_timeout,
+                    temperature=temperature,
                 )
                 if mapped_candidate is not None:
                     mapped_value = lookup.get(mapped_candidate.lower(), mapped_candidate)
