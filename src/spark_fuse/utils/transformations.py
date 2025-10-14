@@ -5,7 +5,6 @@ import os
 import time
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
-import pandas as pd
 import requests
 
 from pyspark.sql import DataFrame, functions as F
@@ -22,6 +21,16 @@ __all__ = [
 
 
 logger = logging.getLogger(__name__)
+
+
+def _create_long_accumulator(sc, name: str):
+    """Create a numeric accumulator, falling back when ``longAccumulator`` is unavailable."""
+
+    if hasattr(sc, "longAccumulator"):
+        return sc.longAccumulator(name)
+
+    logger.debug("SparkContext.longAccumulator missing; using legacy accumulator for %s", name)
+    return sc.accumulator(0)
 
 
 def rename_columns(df: DataFrame, mapping: Mapping[str, str]) -> DataFrame:
@@ -423,12 +432,12 @@ def map_column_with_llm(
     max_retries: int = 3,
     request_timeout: int = 30,
 ) -> DataFrame:
-    """Map ``column`` values to ``target_values`` via an LLM-backed Pandas UDF.
+    """Map ``column`` values to ``target_values`` via a scalar PySpark UDF.
 
-    The transformation batches records with ``mapInPandas``, shares an on-partition cache
-    to avoid duplicate API calls, and tracks aggregate statistics with Spark accumulators.
-    When ``dry_run=True`` no external calls are made; the function only flags values that
-    already match the provided targets.
+    The transformation applies a regular user-defined function across the column, keeping
+    a per-executor in-memory cache to avoid duplicate LLM calls. Spark accumulators track
+    mapping statistics. When ``dry_run=True`` the UDF performs case-insensitive matching
+    only and yields ``None`` for unmatched rows without contacting the LLM.
 
     Args:
         df: Input DataFrame whose values should be normalized.
@@ -482,45 +491,32 @@ def map_column_with_llm(
 
     spark = df.sparkSession
     sc = spark.sparkContext
-    calls_acc = sc.longAccumulator(f"llm_api_calls_{column}")
-    mapped_acc = sc.longAccumulator(f"mapped_entries_{column}")
-    unmapped_acc = sc.longAccumulator(f"unmapped_entries_{column}")
+    calls_acc = _create_long_accumulator(sc, f"llm_api_calls_{column}")
+    mapped_acc = _create_long_accumulator(sc, f"mapped_entries_{column}")
+    unmapped_acc = _create_long_accumulator(sc, f"unmapped_entries_{column}")
 
     new_col_name = f"{column}_mapped"
-    output_schema = df.schema.add(new_col_name, StringType())
 
-    def _map_batch(pdf: pd.DataFrame) -> pd.DataFrame:
+    def _make_mapper():
         cache: Dict[str, Optional[str]] = {}
-        results = []
 
-        for raw_value in pdf[column]:
-            mapped_value: Optional[str] = None
-
+        def _map_value(raw_value: Any) -> Optional[str]:
             if raw_value is None:
                 unmapped_acc.add(1)
-                results.append(None)
-                continue
+                return None
 
             value_str = str(raw_value)
             if value_str.strip() == "":
                 unmapped_acc.add(1)
-                results.append(None)
-                continue
+                return None
 
             if dry_run:
-                canonical = lookup.get(value_str.lower())
-                if value_str in cache:
-                    mapped_value = cache[value_str]
-                else:
-                    mapped_value = canonical if canonical is not None else value_str
-                    cache[value_str] = mapped_value
-
-                if canonical is None:
+                mapped_value = lookup.get(value_str.lower())
+                if mapped_value is None:
                     unmapped_acc.add(1)
                 else:
                     mapped_acc.add(1)
-                results.append(mapped_value)
-                continue
+                return mapped_value
 
             if value_str in cache:
                 mapped_value = cache[value_str]
@@ -546,15 +542,13 @@ def map_column_with_llm(
                 unmapped_acc.add(1)
             else:
                 mapped_acc.add(1)
+            return mapped_value
 
-            results.append(mapped_value)
+        return _map_value
 
-        pdf[new_col_name] = results
-        return pdf
+    mapper_udf = F.udf(_make_mapper(), StringType())
 
-    mapped_df = df.mapInPandas(_map_batch, schema=output_schema)
-    mapped_df = mapped_df.cache()
-
+    mapped_df = df.withColumn(new_col_name, mapper_udf(F.col(column))).cache()
     mapped_df.count()
 
     mapped_count = mapped_acc.value

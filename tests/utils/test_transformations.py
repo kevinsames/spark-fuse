@@ -6,6 +6,7 @@ import pytest
 
 from spark_fuse.utils.transformations import (
     cast_columns,
+    map_column_with_llm,
     normalize_whitespace,
     rename_columns,
     split_by_date_formats,
@@ -153,3 +154,25 @@ def test_split_by_date_formats_strict_mode_raises_on_unmatched(spark):
 
     with pytest.raises(ValueError, match="handle_errors='strict'"):
         split_by_date_formats(df, "raw", ["yyyy-MM-dd"], handle_errors="strict")
+
+
+def test_map_column_with_llm_dry_run_returns_none_for_unmatched(spark):
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "fruit": "Apple"},
+            {"id": 2, "fruit": "bananna"},
+            {"id": 3, "fruit": None},
+        ]
+    )
+
+    result = map_column_with_llm(
+        df,
+        column="fruit",
+        target_values=["Apple", "Banana", "Cherry"],
+        dry_run=True,
+    )
+
+    rows = _rows_by_id(result)
+    assert rows[1]["fruit_mapped"] == "Apple"
+    assert rows[2]["fruit_mapped"] is None
+    assert rows[3]["fruit_mapped"] is None
