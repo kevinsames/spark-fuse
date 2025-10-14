@@ -46,6 +46,29 @@ normalized = map_column_with_llm(
 normalized.select("fruit", "fruit_mapped").show()
 ```
 
+
+
+#### Azure OpenAI token estimate
+
+For sizing, assume:
+
+- 2,000 rows with ~50 characters each (≈50 tokens).
+
+- `target_values` totalling 100 characters (≈25 tokens).
+
+- `o4-mini` model with `temperature=None`.
+
+Each request sends ≈75 input tokens and returns ≈10 tokens, totalling ≈85 tokens per row.
+
+At 2,000 rows ⇒ about 170k tokens. Multiply by your provider's per-token price to estimate cost; adjust partitions or dry-run to manage quota.
+
+As a reference, OpenAI currently lists o4-mini input tokens at $0.0006 per 1K tokens and output tokens at $0.0024 per 1K tokens.
+- Input: 150K tokens × $0.0006 ≈ $0.09
+- Output: 20K tokens × $0.0024 ≈ $0.048
+- Approximate total: $0.14 for the batch
+
+Azure OpenAI pricing may differ; always confirm with your subscription's rate card before running large workloads.
+
 Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready. Some models only accept their default sampling configuration—use `temperature=None` to omit the parameter when required. The LLM mapper is available starting in spark-fuse 0.2.0.
 
 ## CLI
