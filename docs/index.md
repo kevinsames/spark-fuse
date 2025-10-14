@@ -36,11 +36,17 @@ unity.register_external_delta_table(
 from spark_fuse.utils.transformations import map_column_with_llm
 
 targets = ["Apple", "Banana", "Cherry"]
-normalized = map_column_with_llm(df, column="fruit", target_values=targets)
+normalized = map_column_with_llm(
+    df,
+    column="fruit",
+    target_values=targets,
+    model="o4-mini",
+    temperature=None,
+)
 normalized.select("fruit", "fruit_mapped").show()
 ```
 
-Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready.
+Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready. Some models only accept their default sampling configuration—use `temperature=None` to omit the parameter when required. The LLM mapper is available starting in spark-fuse 0.2.0.
 
 ## CLI
 - `spark-fuse connectors`

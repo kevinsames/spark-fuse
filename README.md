@@ -24,7 +24,7 @@ Installation
     - `.\\.venv\\Scripts\\Activate.ps1`
     - `python -m pip install --upgrade pip`
 - From source (dev): `pip install -e ".[dev]"`
-- From PyPI: `pip install spark-fuse`
+- From PyPI: `pip install "spark-fuse>=0.2.0"`
 
 Quickstart
 1) Create a SparkSession with helpful defaults
@@ -65,12 +65,13 @@ mapped_df = map_column_with_llm(
     df,
     column="fruit",
     target_values=standard_values,
-    model="gpt-3.5-turbo",
+    model="o4-mini",
+    temperature=None,
 )
 mapped_df.select("fruit", "fruit_mapped").show()
 ```
 
-Set `dry_run=True` to inspect how many rows already match without spending LLM tokens. Configure your OpenAI or Azure OpenAI credentials with the usual environment variables before running live mappings.
+Set `dry_run=True` to inspect how many rows already match without spending LLM tokens. Configure your OpenAI or Azure OpenAI credentials with the usual environment variables before running live mappings. Some provider models only accept their default sampling configuration—pass `temperature=None` to omit the parameter when needed. This helper ships with spark-fuse 0.2.0 and later.
 
 CLI Usage
 - `spark-fuse --help`

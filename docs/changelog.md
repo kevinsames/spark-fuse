@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-09-07
+### Added
+- `map_column_with_llm` runs as a scalar PySpark UDF with per-executor caching, retry-aware LLM calls, and support for leaving `temperature` unset when providers require their defaults.
+- Databricks notebook demo for the LLM mapping pipeline, including optional secret scope integration for credentials.
+- `sitecustomize.py` to automatically expose the repository `src/` directory on `sys.path` during local development.
+
+### Changed
+- Documentation and examples now highlight the LLM mapper, including dry-run guidance and provider-specific temperature tips.
+- Notebook samples default to `o4-mini` with `temperature=None` to align with current OpenAI requirements.
+
+### Removed
+- Unused pandas dependency now that the mapper no longer relies on pandas UDFs.
+
 ## [0.1.9] - 2025-09-06
 ### Added
 - LLM-powered `map_column_with_llm` transformation for semantic column normalization with batch processing, caching, and retry-aware API integration.
@@ -90,7 +103,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kevinsames/spark-fuse/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/kevinsames/spark-fuse/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/kevinsames/spark-fuse/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...v0.1.7
