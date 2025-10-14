@@ -6,7 +6,7 @@ spark-fuse is an open-source toolkit for PySpark — providing utilities, connec
 - Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), and Databricks DBFS (`dbfs:/`).
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
-- DataFrame utilities for previews, name management, casts, whitespace cleanup, and resilient date parsing.
+- DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, and LLM-backed semantic column mapping.
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
 ## Quickstart
@@ -30,6 +30,17 @@ unity.register_external_delta_table(
     location="abfss://container@account.dfs.core.windows.net/path/to/delta",
 )
 ```
+
+### LLM-powered semantic mapping
+```python
+from spark_fuse.utils.transformations import map_column_with_llm
+
+targets = ["Apple", "Banana", "Cherry"]
+normalized = map_column_with_llm(df, column="fruit", target_values=targets)
+normalized.select("fruit", "fruit_mapped").show()
+```
+
+Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready.
 
 ## CLI
 - `spark-fuse connectors`

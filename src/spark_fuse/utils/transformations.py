@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Optional, Tuple, Union
+import logging
+import os
+import time
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple, Union
+
+import pandas as pd
+import requests
 
 from pyspark.sql import DataFrame, functions as F
-from pyspark.sql.types import DataType
+from pyspark.sql.types import DataType, StringType
 
 __all__ = [
     "rename_columns",
@@ -11,7 +17,11 @@ __all__ = [
     "cast_columns",
     "normalize_whitespace",
     "split_by_date_formats",
+    "map_column_with_llm",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 def rename_columns(df: DataFrame, mapping: Mapping[str, str]) -> DataFrame:
@@ -246,3 +256,315 @@ def split_by_date_formats(
     if return_unmatched:
         result = (result_df, unmatched_df)
     return result
+
+
+def _get_llm_api_config(model: str) -> Tuple[str, Dict[str, str], bool]:
+    """Resolve API endpoint configuration for OpenAI or Azure OpenAI.
+
+    Args:
+        model: Chat model identifier. When using Azure OpenAI this corresponds to the
+            deployment name that should be targeted.
+
+    Returns:
+        A triple ``(api_url, headers, use_azure)`` suitable for `requests.post`.
+        ``use_azure`` is ``True`` when Azure OpenAI environment variables are present.
+
+    Raises:
+        RuntimeError: If the required API key cannot be found in the environment.
+
+    Environment Variables:
+        OPENAI_API_KEY: Standard OpenAI key.
+        AZURE_OPENAI_KEY / AZURE_OPENAI_API_KEY: Azure OpenAI key alternatives.
+        AZURE_OPENAI_ENDPOINT / OPENAI_API_BASE: Azure resource endpoint.
+        AZURE_OPENAI_API_VERSION: Optional API version (defaults to ``2023-05-15``).
+    """
+
+    api_key = (
+        os.getenv("OPENAI_API_KEY")
+        or os.getenv("AZURE_OPENAI_KEY")
+        or os.getenv("AZURE_OPENAI_API_KEY")
+    )
+    if not api_key:
+        raise RuntimeError("LLM API key not found in environment variables.")
+
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("OPENAI_API_BASE")
+    if azure_endpoint:
+        api_base = azure_endpoint.rstrip("/")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15")
+        deployment_name = model
+        api_url = (
+            f"{api_base}/openai/deployments/{deployment_name}/chat/completions"
+            f"?api-version={api_version}"
+        )
+        headers = {"Content-Type": "application/json", "api-key": api_key}
+        return api_url, headers, True
+
+    api_url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    return api_url, headers, False
+
+
+def _fetch_llm_mapping(
+    value: str,
+    target_values: Sequence[str],
+    api_url: str,
+    headers: Dict[str, str],
+    use_azure: bool,
+    model: str,
+    *,
+    max_retries: int = 3,
+    request_timeout: int = 30,
+) -> Optional[str]:
+    """Invoke the LLM API to map ``value`` to one of ``target_values``.
+
+    Args:
+        value: Raw value that should be normalized.
+        target_values: Ordered collection of allowed canonical values.
+        api_url: Endpoint returned by :func:`_get_llm_api_config`.
+        headers: Prepared headers containing authentication details.
+        use_azure: Indicates whether the request targets Azure OpenAI.
+        model: Chat model or deployment name.
+        max_retries: Maximum attempts before giving up.
+        request_timeout: Per-request timeout (seconds) passed to ``requests``.
+
+    Returns:
+        The canonical value chosen by the model, or ``None`` when the model abstains or
+        returns a value outside the permitted targets.
+
+    Notes:
+        - The function performs exponential back-off on rate limiting and server errors.
+        - Only 200 responses are considered successful; other codes are logged and yield
+          ``None``.
+    """
+
+    targets_str = ", ".join(f"'{target}'" for target in target_values)
+    prompt = (
+        f'Map the value "{value}" to one of the following categories: {targets_str}. '
+        "If none apply, respond with 'None'."
+    )
+
+    payload: Dict[str, Any] = {
+        "messages": [
+            {"role": "system", "content": "You are a data normalization assistant."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0,
+    }
+    if not use_azure:
+        payload["model"] = model
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=request_timeout,
+            )
+        except requests.RequestException:
+            logger.exception("Exception during LLM API call (attempt %s)", attempt)
+            time.sleep(min(2**attempt, 60))
+            continue
+
+        if response.status_code == 429:
+            logger.warning("Rate limit hit (HTTP 429). Backing off (attempt %s).", attempt)
+            time.sleep(min(2**attempt, 60))
+            continue
+
+        if 500 <= response.status_code < 600:
+            logger.warning(
+                "Server error %s on LLM call. Retrying (attempt %s).",
+                response.status_code,
+                attempt,
+            )
+            time.sleep(min(2**attempt, 60))
+            continue
+
+        if response.status_code != 200:
+            logger.error(
+                "LLM API call failed (status %s): %s",
+                response.status_code,
+                response.text,
+            )
+            return None
+
+        try:
+            payload_json = response.json()
+            content = payload_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+        except ValueError:
+            logger.exception("Failed to parse LLM response as JSON")
+            return None
+
+        mapped_value = content.strip().strip('"')
+        if not mapped_value or mapped_value.lower() == "none":
+            return None
+
+        for target in target_values:
+            if mapped_value.lower() == target.lower():
+                return target
+
+        logger.warning(
+            "LLM returned '%s', which is not a valid target option; treating as unmapped.",
+            mapped_value,
+        )
+        return None
+
+    logger.error("LLM mapping failed after %s attempts", max_retries)
+    return None
+
+
+def map_column_with_llm(
+    df: DataFrame,
+    column: str,
+    target_values: Union[Sequence[str], Mapping[str, Any]],
+    *,
+    model: str = "gpt-3.5-turbo",
+    dry_run: bool = False,
+    max_retries: int = 3,
+    request_timeout: int = 30,
+) -> DataFrame:
+    """Map ``column`` values to ``target_values`` via an LLM-backed Pandas UDF.
+
+    The transformation batches records with ``mapInPandas``, shares an on-partition cache
+    to avoid duplicate API calls, and tracks aggregate statistics with Spark accumulators.
+    When ``dry_run=True`` no external calls are made; the function only flags values that
+    already match the provided targets.
+
+    Args:
+        df: Input DataFrame whose values should be normalized.
+        column: Source column containing the free-form text to map.
+        target_values: List or mapping defining the set of canonical outputs. When a
+            mapping is provided, its keys are treated as the canonical set.
+        model: Chat model (or Azure deployment name) to query.
+        dry_run: Skip external calls and simply echo canonical matches (useful for smoke
+            testing and cost estimation).
+        max_retries: Retry budget passed to :func:`_fetch_llm_mapping`.
+        request_timeout: Timeout in seconds for each HTTP request.
+
+    Returns:
+        A new DataFrame with an additional ``<column>_mapped`` string column containing
+        the canonical value or ``None`` when no match is determined.
+
+    Raises:
+        ValueError: If the source column is missing or ``target_values`` is empty.
+        TypeError: When ``target_values`` contains non-string entries.
+
+    Notes:
+        - The resulting DataFrame is cached to ensure logging the accumulator values does
+          not trigger duplicate LLM requests.
+        - Provide API credentials via the environment variables documented in
+          :func:`_get_llm_api_config` before running with ``dry_run=False``.
+    """
+
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found in DataFrame")
+
+    if isinstance(target_values, Mapping):
+        targets = list(dict.fromkeys(target_values.keys()))
+    else:
+        targets = list(dict.fromkeys(target_values))
+
+    if not targets:
+        raise ValueError("target_values must contain at least one entry")
+
+    if not all(isinstance(target, str) for target in targets):
+        raise TypeError("target_values entries must be strings")
+
+    lookup: Dict[str, str] = {target.lower(): target for target in targets}
+    target_list = list(lookup.values())
+
+    api_url: Optional[str] = None
+    headers: Dict[str, str] = {}
+    use_azure = False
+
+    if not dry_run:
+        api_url, headers, use_azure = _get_llm_api_config(model)
+
+    spark = df.sparkSession
+    sc = spark.sparkContext
+    calls_acc = sc.longAccumulator(f"llm_api_calls_{column}")
+    mapped_acc = sc.longAccumulator(f"mapped_entries_{column}")
+    unmapped_acc = sc.longAccumulator(f"unmapped_entries_{column}")
+
+    new_col_name = f"{column}_mapped"
+    output_schema = df.schema.add(new_col_name, StringType())
+
+    def _map_batch(pdf: pd.DataFrame) -> pd.DataFrame:
+        cache: Dict[str, Optional[str]] = {}
+        results = []
+
+        for raw_value in pdf[column]:
+            mapped_value: Optional[str] = None
+
+            if raw_value is None:
+                unmapped_acc.add(1)
+                results.append(None)
+                continue
+
+            value_str = str(raw_value)
+            if value_str.strip() == "":
+                unmapped_acc.add(1)
+                results.append(None)
+                continue
+
+            if dry_run:
+                canonical = lookup.get(value_str.lower())
+                if value_str in cache:
+                    mapped_value = cache[value_str]
+                else:
+                    mapped_value = canonical if canonical is not None else value_str
+                    cache[value_str] = mapped_value
+
+                if canonical is None:
+                    unmapped_acc.add(1)
+                else:
+                    mapped_acc.add(1)
+                results.append(mapped_value)
+                continue
+
+            if value_str in cache:
+                mapped_value = cache[value_str]
+            else:
+                calls_acc.add(1)
+                mapped_candidate = _fetch_llm_mapping(
+                    value_str,
+                    target_list,
+                    api_url=api_url,  # type: ignore[arg-type]
+                    headers=headers,
+                    use_azure=use_azure,
+                    model=model,
+                    max_retries=max_retries,
+                    request_timeout=request_timeout,
+                )
+                if mapped_candidate is not None:
+                    mapped_value = lookup.get(mapped_candidate.lower(), mapped_candidate)
+                else:
+                    mapped_value = None
+                cache[value_str] = mapped_value
+
+            if mapped_value is None:
+                unmapped_acc.add(1)
+            else:
+                mapped_acc.add(1)
+
+            results.append(mapped_value)
+
+        pdf[new_col_name] = results
+        return pdf
+
+    mapped_df = df.mapInPandas(_map_batch, schema=output_schema)
+    mapped_df = mapped_df.cache()
+
+    mapped_df.count()
+
+    mapped_count = mapped_acc.value
+    unmapped_count = unmapped_acc.value
+    logger.info(
+        "Mapping stats for column '%s': Mapped %s, Unmapped %s, API calls made %s.",
+        column,
+        mapped_count,
+        unmapped_count,
+        calls_acc.value,
+    )
+
+    return mapped_df

@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.1.9] - 2025-09-06
+### Added
+- LLM-powered `map_column_with_llm` transformation for semantic column normalization with batch processing, caching, and retry-aware API integration.
+
+### Documentation
+- Highlighted the LLM mapping helper in the README, site landing page, and API reference.
+
 ## [0.1.8] - 2025-09-06
 ### Fixed
 - Corrected `scd2_upsert` documentation parameters so MkDocs strict builds no longer fail.
@@ -83,9 +90,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/kevinsames/spark-fuse/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/kevinsames/spark-fuse/compare/v0.1.7...v0.1.8
-[0.1.7]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...v0.1.7
 [0.1.7]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...v0.1.5

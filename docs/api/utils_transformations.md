@@ -9,3 +9,4 @@
         - cast_columns
         - normalize_whitespace
         - split_by_date_formats
+        - map_column_with_llm

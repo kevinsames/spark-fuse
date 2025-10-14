@@ -10,6 +10,7 @@ Features
 - Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), and Databricks DBFS (`dbfs:/`).
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
+- LLM-powered semantic column normalization that batches API calls and caches responses.
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
 Installation
@@ -54,6 +55,22 @@ unity.register_external_delta_table(
     location="abfss://container@account.dfs.core.windows.net/path/to/delta",
 )
 ```
+
+LLM-Powered Column Mapping
+```python
+from spark_fuse.utils.transformations import map_column_with_llm
+
+standard_values = ["Apple", "Banana", "Cherry"]
+mapped_df = map_column_with_llm(
+    df,
+    column="fruit",
+    target_values=standard_values,
+    model="gpt-3.5-turbo",
+)
+mapped_df.select("fruit", "fruit_mapped").show()
+```
+
+Set `dry_run=True` to inspect how many rows already match without spending LLM tokens. Configure your OpenAI or Azure OpenAI credentials with the usual environment variables before running live mappings.
 
 CLI Usage
 - `spark-fuse --help`
