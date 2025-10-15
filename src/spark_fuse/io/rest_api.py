@@ -394,3 +394,15 @@ class RestAPIReader(Connector):
                 }
             ]
         raise ValueError(f"Unsupported pagination mode: {mode}")
+
+    def write(
+        self,
+        df: DataFrame,
+        path: str,
+        *,
+        fmt: Optional[str] = None,
+        mode: str = "error",
+        **options: Any,
+    ) -> None:
+        """Writing back to REST APIs is not supported."""
+        raise NotImplementedError("RestAPIReader does not support write operations")
