@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, Mapping, Optional
 
 from pyspark.sql import DataFrame, SparkSession
 
@@ -22,9 +22,36 @@ class Connector(ABC):
 
     @abstractmethod
     def read(
-        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+        self,
+        spark: SparkSession,
+        source: Any,
+        *,
+        fmt: Optional[str] = None,
+        schema: Optional[Any] = None,
+        source_config: Optional[Mapping[str, Any]] = None,
+        options: Optional[Mapping[str, Any]] = None,
+        **kwargs: Any,
     ) -> DataFrame:
-        """Read a dataset from the given path using the connector."""
+        """Load a dataset from the given source and return a Spark DataFrame.
+
+        Args:
+            spark: Active ``SparkSession``.
+            source: Canonical identifier for the data source (e.g. filesystem path,
+                database table name, REST endpoint, etc.).
+            fmt: Optional format hint (e.g. ``delta``, ``csv``) for connectors that
+                support multiple serialization formats.
+            schema: Optional explicit schema to enforce. Connectors may ignore this
+                parameter if schema enforcement is not supported.
+            source_config: Connector-specific configuration describing how to read
+                from ``source`` (e.g. pagination settings for REST APIs, credentials,
+                or authentication hints).
+            options: Additional connector options. This can be used for Spark read
+                options or arbitrary connector-specific parameters.
+            **kwargs: Future extension point for connector-specific keyword arguments.
+
+        Returns:
+            pyspark.sql.DataFrame: The loaded dataset.
+        """
 
     @abstractmethod
     def write(

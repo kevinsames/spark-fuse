@@ -4,10 +4,10 @@ spark-fuse
 ![CI](https://github.com/kevinsames/spark-fuse/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
-spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, and Hive Metastore.
+spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, Hive Metastore, and JSON-centric REST APIs.
 
 Features
-- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), and Databricks DBFS (`dbfs:/`).
+- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, and REST APIs (JSON).
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
 - LLM-powered semantic column normalization that batches API calls and caches responses.
@@ -24,7 +24,7 @@ Installation
     - `.\\.venv\\Scripts\\Activate.ps1`
     - `python -m pip install --upgrade pip`
 - From source (dev): `pip install -e ".[dev]"`
-- From PyPI: `pip install "spark-fuse>=0.2.0"`
+- From PyPI: `pip install "spark-fuse>=0.2.1"`
 
 Quickstart
 1) Create a SparkSession with helpful defaults
@@ -41,7 +41,20 @@ df = ADLSGen2Connector().read(spark, "abfss://container@account.dfs.core.windows
 df.show(5)
 ```
 
-3) Register an external table in Unity Catalog
+3) Load paginated REST API responses
+```python
+from spark_fuse.io.rest_api import RestAPIReader
+
+reader = RestAPIReader()
+config = {
+    "records_field": "results",
+    "pagination": {"mode": "response", "field": "next", "max_pages": 2},
+}
+pokemon = reader.read(spark, "https://pokeapi.co/api/v2/pokemon", source_config=config)
+pokemon.select("name").show(5)
+```
+
+4) Register an external table in Unity Catalog
 ```python
 from spark_fuse.catalogs import unity
 

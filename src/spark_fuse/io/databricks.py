@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 import requests
 from pyspark.sql import DataFrame, SparkSession
@@ -15,38 +15,162 @@ from .utils import as_seq, as_bool
 
 @register_connector
 class DatabricksDBFSConnector(Connector):
-    """Connector for Databricks DBFS paths (\"dbfs:/\").
+    """Connector for Databricks DBFS paths and Unity/Hive tables.
 
-    Supports reading and writing Delta (default), Parquet, and CSV.
+    Supports reading and writing Delta (default), Parquet, and CSV for DBFS paths.
     """
 
     name = "databricks"
 
     def validate_path(self, path: str) -> bool:
-        """Return True if `path` is a DBFS URI (starts with `dbfs:/`)."""
-        return path.startswith("dbfs:/")
+        """Return True if the input looks like a DBFS path or Databricks table identifier."""
+        if not isinstance(path, str):
+            return False
+        value = path.strip()
+        if not value:
+            return False
+        return value.startswith("dbfs:/") or self._is_table_identifier(value)
 
     def read(
-        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+        self,
+        spark: SparkSession,
+        source: Any,
+        *,
+        fmt: Optional[str] = None,
+        schema: Optional[Any] = None,
+        source_config: Optional[Mapping[str, Any]] = None,
+        options: Optional[Mapping[str, Any]] = None,
+        **kwargs: Any,
     ) -> DataFrame:
-        """Read a dataset from DBFS.
+        """Read a dataset from Databricks storage or catalogs.
 
         Args:
             spark: Active `SparkSession`.
-            path: DBFS location.
-            fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
-            **options: Additional Spark read options.
+            source: Either a `dbfs:/` location, a table identifier string, or a mapping containing
+                table/path metadata.
+            fmt: Optional format override for DBFS reads (`delta` by default). Ignored for tables.
+            schema: Optional schema to enforce for file reads. Not supported for table reads.
+            source_config: Connector-specific settings (e.g., `catalog`, `schema`, `table`, `path`).
+            options: Additional Spark read options.
         """
-        if not self.validate_path(path):
-            raise ValueError(f"Invalid DBFS path: {path}")
-        fmt = (fmt or options.pop("format", None) or "delta").lower()
-        reader = spark.read.options(**options)
-        if fmt == "delta":
-            return reader.format("delta").load(path)
-        elif fmt in {"parquet", "csv"}:
-            return reader.format(fmt).load(path)
-        else:
-            raise ValueError(f"Unsupported format for Databricks: {fmt}")
+        path, table = self._normalize_source(source, source_config)
+        opts = dict(options or {})
+
+        if path:
+            fmt_value = (fmt or opts.pop("format", None) or "delta").lower()
+            reader = spark.read
+            if schema is not None:
+                reader = reader.schema(schema)
+            if opts:
+                reader = reader.options(**opts)
+            if fmt_value == "delta":
+                return reader.format("delta").load(path)
+            if fmt_value in {"parquet", "csv"}:
+                return reader.format(fmt_value).load(path)
+            raise ValueError(f"Unsupported format for Databricks: {fmt_value}")
+
+        if schema is not None:
+            raise ValueError("schema parameter is not supported when reading Databricks tables")
+        fmt_option = fmt or opts.pop("format", None)
+        if fmt_option:
+            raise ValueError("fmt/format options are not applicable when reading Databricks tables")
+        reader = spark.read
+        if opts:
+            reader = reader.options(**opts)
+        return reader.table(table)
+
+    def _normalize_source(
+        self,
+        source: Any,
+        source_config: Optional[Mapping[str, Any]],
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Return a tuple of (dbfs_path, table_identifier) based on the provided inputs."""
+        config: Dict[str, Any] = {}
+        if isinstance(source_config, Mapping):
+            config.update(source_config)
+
+        raw_source = source
+        if isinstance(raw_source, Mapping):
+            config.update(raw_source)
+            raw_source = config.get("path") or config.get("table") or config.get("name")
+
+        path_value = config.get("path")
+        table_value = config.get("table") or config.get("name")
+
+        if isinstance(raw_source, str):
+            stripped = raw_source.strip()
+            if stripped:
+                if stripped.startswith("dbfs:/"):
+                    path_value = stripped
+                elif self._is_table_identifier(stripped):
+                    table_value = stripped
+                else:
+                    raise ValueError(f"Unsupported Databricks source '{raw_source}'")
+        elif raw_source is not None and not isinstance(raw_source, Mapping):
+            raise TypeError(
+                "Databricks source must be a dbfs:/ path string, table identifier string, or mapping."
+            )
+
+        if path_value and table_value:
+            raise ValueError("Provide either a DBFS path or a table identifier, not both")
+
+        if path_value is not None:
+            if not isinstance(path_value, str):
+                raise TypeError("DBFS path must be a string")
+            path_value = path_value.strip()
+            if not path_value.startswith("dbfs:/"):
+                raise ValueError(
+                    "Only dbfs:/ paths are supported when reading from the Databricks file system"
+                )
+            return path_value, None
+
+        if table_value is not None:
+            if not isinstance(table_value, str):
+                raise TypeError("Table identifier must be a string")
+            table_value = table_value.strip()
+            if not table_value:
+                raise ValueError("Table identifier must be non-empty")
+
+            catalog = config.get("catalog")
+            schema_name = config.get("schema") or config.get("database")
+            parts = table_value.split(".")
+            if len(parts) >= 3:
+                table_identifier = table_value
+            elif len(parts) == 2:
+                if catalog:
+                    table_identifier = ".".join([str(catalog).strip(), table_value])
+                else:
+                    table_identifier = table_value
+            else:
+                segments = [
+                    str(segment).strip()
+                    for segment in (catalog, schema_name, table_value)
+                    if segment
+                ]
+                table_identifier = ".".join(segments) if segments else table_value
+
+            if not self._is_table_identifier(table_identifier):
+                raise ValueError(f"Invalid table identifier: {table_identifier}")
+            return None, table_identifier
+
+        raise ValueError(
+            "Databricks connector requires either a dbfs:/ path or a table identifier via the "
+            "`source` argument or `source_config`."
+        )
+
+    @staticmethod
+    def _is_table_identifier(value: str) -> bool:
+        if not isinstance(value, str):
+            return False
+        trimmed = value.strip()
+        if not trimmed or trimmed.startswith("dbfs:/"):
+            return False
+        if "://" in trimmed or "/" in trimmed:
+            return False
+        parts = trimmed.split(".")
+        if not 1 <= len(parts) <= 3:
+            return False
+        return all(parts)
 
     def write(
         self,
@@ -85,7 +209,9 @@ class DatabricksDBFSConnector(Connector):
             if business_keys is None:
                 raise ValueError("business_keys must be provided for SCD writes to Delta")
             if not business_keys or len(business_keys) == 0:
-                raise ValueError("business_keys must be a non-empty sequence for SCD writes to Delta")
+                raise ValueError(
+                    "business_keys must be a non-empty sequence for SCD writes to Delta"
+                )
 
             tracked_columns = as_seq(options.pop("tracked_columns", None))
             dedupe_keys = as_seq(options.pop("dedupe_keys", None))

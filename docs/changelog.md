@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-09-08
+### Added
+- REST API connector with pagination, retry handling, and distributed ingestion support.
+- Example notebook showcasing the REST connector against the public PokeAPI service.
+- Test coverage for REST API pagination paths using mocked HTTP responses.
+
+### Changed
+- Databricks connector can now read from Unity Catalog and Hive Metastore tables in addition to DBFS paths.
+- Documentation highlights REST ingestion and updated Databricks capabilities.
+- Bumped minimum recommended package version in install guides and README.
+
 ## [0.2.0] - 2025-09-07
 ### Added
 - `map_column_with_llm` runs as a scalar PySpark UDF with per-executor caching, retry-aware LLM calls, and support for leaving `temperature` unset when providers require their defaults.
@@ -103,7 +114,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/kevinsames/spark-fuse/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kevinsames/spark-fuse/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/kevinsames/spark-fuse/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/kevinsames/spark-fuse/compare/v0.1.7...v0.1.8

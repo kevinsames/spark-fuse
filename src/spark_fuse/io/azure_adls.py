@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from pyspark.sql import DataFrame, SparkSession
 
@@ -27,20 +27,38 @@ class ADLSGen2Connector(Connector):
         return bool(_ABFSS_RE.match(path))
 
     def read(
-        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+        self,
+        spark: SparkSession,
+        source: Any,
+        *,
+        fmt: Optional[str] = None,
+        schema: Optional[Any] = None,
+        source_config: Optional[Mapping[str, Any]] = None,
+        options: Optional[Mapping[str, Any]] = None,
+        **kwargs: Any,
     ) -> DataFrame:
         """Read a dataset from ADLS Gen2.
 
         Args:
             spark: Active `SparkSession`.
-            path: `abfss://` location to read from.
+            source: `abfss://` location to read from.
             fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
-            **options: Additional Spark read options.
+            schema: Optional schema for structured reads.
+            source_config: Unused for ADLS, accepted for interface compatibility.
+            options: Additional Spark read options.
         """
+        if not isinstance(source, str):
+            raise TypeError("ADLSGen2Connector.read expects 'source' to be a string path")
+        path = source
         if not self.validate_path(path):
             raise ValueError(f"Invalid ADLS Gen2 path: {path}")
-        fmt = (fmt or options.pop("format", None) or "delta").lower()
-        reader = spark.read.options(**options)
+        opts = dict(options or {})
+        fmt = (fmt or opts.pop("format", None) or "delta").lower()
+        reader = spark.read
+        if schema is not None:
+            reader = reader.schema(schema)
+        if opts:
+            reader = reader.options(**opts)
         if fmt == "delta":
             return reader.format("delta").load(path)
         elif fmt in {"parquet", "csv"}:

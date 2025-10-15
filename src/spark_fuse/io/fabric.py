@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -30,20 +30,38 @@ class FabricLakehouseConnector(Connector):
         return bool(_ONELAKE_SCHEME.match(path) or _ONELAKE_ABFSS.match(path))
 
     def read(
-        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+        self,
+        spark: SparkSession,
+        source: Any,
+        *,
+        fmt: Optional[str] = None,
+        schema: Optional[Any] = None,
+        source_config: Optional[Mapping[str, Any]] = None,
+        options: Optional[Mapping[str, Any]] = None,
+        **kwargs: Any,
     ) -> DataFrame:
         """Read a dataset from a Fabric OneLake-backed location.
 
         Args:
             spark: Active `SparkSession`.
-            path: OneLake or abfss-on-OneLake path.
+            source: OneLake or abfss-on-OneLake path.
             fmt: Optional format override: `delta` (default), `parquet`, or `csv`.
-            **options: Additional Spark read options.
+            schema: Optional schema to enforce when reading structured data.
+            source_config: Unused for Fabric, accepted for interface compatibility.
+            options: Additional Spark read options.
         """
+        if not isinstance(source, str):
+            raise TypeError("FabricLakehouseConnector.read expects 'source' to be a string path")
+        path = source
         if not self.validate_path(path):
             raise ValueError(f"Invalid Fabric OneLake path: {path}")
-        fmt = (fmt or options.pop("format", None) or "delta").lower()
-        reader = spark.read.options(**options)
+        opts = dict(options or {})
+        fmt = (fmt or opts.pop("format", None) or "delta").lower()
+        reader = spark.read
+        if schema is not None:
+            reader = reader.schema(schema)
+        if opts:
+            reader = reader.options(**opts)
         if fmt == "delta":
             return reader.format("delta").load(path)
         elif fmt in {"parquet", "csv"}:
@@ -86,7 +104,9 @@ class FabricLakehouseConnector(Connector):
             if business_keys is None:
                 raise ValueError("business_keys must be provided for SCD writes to Delta")
             if not business_keys or len(business_keys) == 0:
-                raise ValueError("business_keys must be a non-empty sequence for SCD writes to Delta")
+                raise ValueError(
+                    "business_keys must be a non-empty sequence for SCD writes to Delta"
+                )
 
             tracked_columns = as_seq(options.pop("tracked_columns", None))
             dedupe_keys = as_seq(options.pop("dedupe_keys", None))
