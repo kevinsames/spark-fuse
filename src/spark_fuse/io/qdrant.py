@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from pyspark.sql import DataFrame, SparkSession
 
@@ -27,7 +27,15 @@ class QdrantConnector(Connector):
         return bool(_QDRANT_RE.match(path))
 
     def read(
-        self, spark: SparkSession, path: str, *, fmt: Optional[str] = None, **options: Any
+        self,
+        spark: SparkSession,
+        source: Any,
+        *,
+        fmt: Optional[str] = None,
+        schema: Optional[Any] = None,
+        source_config: Optional[Mapping[str, Any]] = None,
+        options: Optional[Mapping[str, Any]] = None,
+        **kwargs: Any,
     ) -> DataFrame:
         """Read vectors/payloads from Qdrant (not yet implemented)."""
         raise NotImplementedError(

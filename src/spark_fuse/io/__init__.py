@@ -9,3 +9,4 @@ from . import azure_adls as _azure_adls  # noqa: F401
 from . import fabric as _fabric  # noqa: F401
 from . import databricks as _databricks  # noqa: F401
 from . import qdrant as _qdrant  # noqa: F401
+from . import rest_api as _rest_api  # noqa: F401
