@@ -144,6 +144,64 @@ def test_split_by_date_formats_default_mode_sets_fallback(spark):
     assert unmatched_rows[2]["raw_date"] is None
 
 
+def test_split_by_date_formats_default_mode_with_multiple_formats(spark):
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "raw": "01-01-1900"},
+            {"id": 2, "raw": "15.02.2020"},
+            {"id": 3, "raw": "00.00.0000"},
+        ]
+    )
+
+    result_df, unmatched_df = split_by_date_formats(
+        df,
+        "raw",
+        ["MM-dd-yyyy", "dd.MM.yyyy"],
+        handle_errors="default",
+        default_value="1900-01-01",
+        return_unmatched=True,
+    )
+
+    rows = _rows_by_id(result_df)
+    assert rows[1]["raw_date"] == date(1900, 1, 1)
+    assert rows[2]["raw_date"] == date(2020, 2, 15)
+    assert rows[3]["raw_date"] == date(1900, 1, 1)
+
+    unmatched_rows = _rows_by_id(unmatched_df)
+    assert set(unmatched_rows) == {3}
+    assert unmatched_rows[3]["raw_date"] is None
+
+
+def test_split_by_date_formats_default_mode_with_three_formats(spark):
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "raw": "2023-03-05"},
+            {"id": 2, "raw": "05/06/2023"},
+            {"id": 3, "raw": "17.08.2024"},
+            {"id": 4, "raw": "not a date"},
+        ]
+    )
+
+    result_df, unmatched_df = split_by_date_formats(
+        df,
+        "raw",
+        ["yyyy-MM-dd", "MM/dd/yyyy", "dd.MM.yyyy"],
+        handle_errors="default",
+        default_value="1970-01-01",
+        return_unmatched=True,
+    )
+
+    rows = _rows_by_id(result_df)
+    assert rows[1]["raw_date"] == date(2023, 3, 5)
+    assert rows[2]["raw_date"] == date(2023, 5, 6)
+    assert rows[3]["raw_date"] == date(2024, 8, 17)
+    assert rows[4]["raw_date"] == date(1970, 1, 1)
+
+    unmatched_rows = _rows_by_id(unmatched_df)
+    assert set(unmatched_rows) == {4}
+    assert unmatched_rows[4]["raw_date"] is None
+
+
 def test_split_by_date_formats_strict_mode_raises_on_unmatched(spark):
     df = spark.createDataFrame(
         [
@@ -154,6 +212,25 @@ def test_split_by_date_formats_strict_mode_raises_on_unmatched(spark):
 
     with pytest.raises(ValueError, match="handle_errors='strict'"):
         split_by_date_formats(df, "raw", ["yyyy-MM-dd"], handle_errors="strict")
+
+
+def test_split_by_date_formats_without_returning_unmatched(spark):
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "raw": "2023-03-05"},
+            {"id": 2, "raw": "05/06/2023"},
+        ]
+    )
+
+    result_df = split_by_date_formats(
+        df,
+        "raw",
+        ["yyyy-MM-dd", "MM/dd/yyyy"],
+    )
+
+    rows = _rows_by_id(result_df)
+    assert rows[1]["raw_date"] == date(2023, 3, 5)
+    assert rows[2]["raw_date"] == date(2023, 5, 6)
 
 
 def test_map_column_with_llm_dry_run_returns_none_for_unmatched(spark):
