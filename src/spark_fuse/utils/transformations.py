@@ -224,14 +224,9 @@ def split_by_date_formats(
     else:
         parsed_expr = F.coalesce(*parsed_expressions)
 
-    format_idx_expr = None
-    for idx, expr in enumerate(parsed_expressions):
-        candidate = F.when(expr.isNotNull(), F.lit(idx))
-        format_idx_expr = (
-            candidate if format_idx_expr is None else format_idx_expr.otherwise(candidate)
-        )
-    if format_idx_expr is None:
-        format_idx_expr = F.lit(None)
+    format_idx_expr = F.lit(None)
+    for idx, expr in reversed(list(enumerate(parsed_expressions))):
+        format_idx_expr = F.when(expr.isNotNull(), F.lit(idx)).otherwise(format_idx_expr)
 
     format_idx_column = f"__{column}_format_idx__"
     while format_idx_column in df.columns:
