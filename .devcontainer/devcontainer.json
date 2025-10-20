@@ -1,0 +1,37 @@
+{
+  "name": "spark-fuse",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "containerEnv": {
+    "PYTHONPATH": "/workspaces/spark-fuse/src",
+    "JAVA_HOME": "/usr/lib/jvm/java-11-openjdk-amd64",
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+  },
+  "postCreateCommand": "pip install -e .[dev]",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": [
+          "tests"
+        ],
+        "python.formatting.provider": "none",
+        "ruff.lint.args": [
+          "--line-length",
+          "100"
+        ]
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+  "remoteUser": "vscode"
+}
