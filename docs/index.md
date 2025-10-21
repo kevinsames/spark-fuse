@@ -6,7 +6,7 @@ spark-fuse is an open-source toolkit for PySpark — providing utilities, connec
 - Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, and REST APIs (JSON).
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
-- DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, and LLM-backed semantic column mapping.
+- DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
 ## Quickstart
@@ -83,6 +83,19 @@ As a reference, OpenAI currently lists o4-mini input tokens at $0.0006 per 1K to
 Azure OpenAI pricing may differ; always confirm with your subscription's rate card before running large workloads.
 
 Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready. Some models only accept their default sampling configuration—use `temperature=None` to omit the parameter when required. The LLM mapper is available starting in spark-fuse 0.2.0.
+
+### Calendar and time dimensions
+```python
+from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
+
+dates = create_date_dataframe(spark, "2024-01-01", "2024-01-07")
+times = create_time_dataframe(spark, "08:00:00", "12:00:00", interval_seconds=1800)
+
+dates.select("date", "year", "week", "day_name").show()
+times.select("time", "hour", "minute").show()
+```
+
+Try the interactive `notebooks/date_time_dimensions_demo.ipynb` notebook to explore the helpers end-to-end.
 
 ## CLI
 - `spark-fuse connectors`

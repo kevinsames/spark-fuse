@@ -43,6 +43,11 @@ nav:
       - Install: install.md
   - Guides:
       - CLI: cli.md
+      - Date & Time Dimensions: date_time_dimensions.md
+      - LLM Mapping Demo: llm_mapping_demo.md
+      - REST API Reader Demo: rest_api_reader_demo.md
+      - Split by Date Formats Demo: split_by_date_formats_demo.md
+      - SCD Upsert Demo: scd_upsert_demo.md
   - Project:
       - Contributing: contributing.md
       - Code of Conduct: code-of-conduct.md
