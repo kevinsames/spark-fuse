@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-09-09
+### Added
+- Date and time dimension helpers (`create_date_dataframe`, `create_time_dataframe`) with calendar and clock attributes.
+- Unit tests covering the new DataFrame utilities.
+- Demo notebook (`notebooks/date_time_dimensions_demo.ipynb`) showcasing the dimension builders in action.
+
+### Documentation
+- README and site homepage updated with calendar/time examples and notebook reference.
+
 ## [0.2.1] - 2025-09-08
 ### Added
 - REST API connector with pagination, retry handling, and distributed ingestion support.
@@ -114,7 +123,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kevinsames/spark-fuse/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/kevinsames/spark-fuse/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kevinsames/spark-fuse/compare/v0.1.9...v0.2.0
 [0.1.9]: https://github.com/kevinsames/spark-fuse/compare/v0.1.8...v0.1.9

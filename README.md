@@ -10,6 +10,7 @@ Features
 - Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, and REST APIs (JSON).
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
+- DataFrame utilities for previews, schema checks, and ready-made date/time dimensions (daily calendar attributes and clock buckets).
 - LLM-powered semantic column normalization that batches API calls and caches responses.
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
@@ -24,7 +25,7 @@ Installation
     - `.\\.venv\\Scripts\\Activate.ps1`
     - `python -m pip install --upgrade pip`
 - From source (dev): `pip install -e ".[dev]"`
-- From PyPI: `pip install "spark-fuse>=0.2.1"`
+- From PyPI: `pip install "spark-fuse>=0.3.0"`
 
 Quickstart
 1) Create a SparkSession with helpful defaults
@@ -68,6 +69,18 @@ unity.register_external_delta_table(
     location="abfss://container@account.dfs.core.windows.net/path/to/delta",
 )
 ```
+
+5) Build date/time dimensions with rich attributes
+```python
+from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
+
+date_dim = create_date_dataframe(spark, "2024-01-01", "2024-01-07")
+time_dim = create_time_dataframe(spark, "00:00:00", "23:59:00", interval_seconds=60)
+
+date_dim.select("date", "year", "week", "day_name").show()
+time_dim.select("time", "hour", "minute").show(5)
+```
+Check out `notebooks/date_time_dimensions_demo.ipynb` for an interactive walkthrough.
 
 LLM-Powered Column Mapping
 ```python
