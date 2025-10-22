@@ -4,10 +4,10 @@ spark-fuse
 ![CI](https://github.com/kevinsames/spark-fuse/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
-spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, Hive Metastore, and JSON-centric REST APIs.
+spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, Hive Metastore, JSON-centric REST APIs, and SPARQL endpoints.
 
 Features
-- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, and REST APIs (JSON).
+- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, REST APIs (JSON), and SPARQL services.
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
 - DataFrame utilities for previews, schema checks, and ready-made date/time dimensions (daily calendar attributes and clock buckets).
@@ -25,7 +25,7 @@ Installation
     - `.\\.venv\\Scripts\\Activate.ps1`
     - `python -m pip install --upgrade pip`
 - From source (dev): `pip install -e ".[dev]"`
-- From PyPI: `pip install "spark-fuse>=0.3.0"`
+- From PyPI: `pip install "spark-fuse>=0.3.2"`
 
 Quickstart
 1) Create a SparkSession with helpful defaults
@@ -60,7 +60,36 @@ Need to hit a POST endpoint? Set `"request_type": "POST"` and attach your payloa
 `"request_body": {...}` (defaults to JSON encoding—add `"request_body_type": "data"` for form bodies).
 Flip on `"include_response_payload": True` to add a `response_payload` column with the raw server JSON.
 
-4) Register an external table in Unity Catalog
+4) Query a SPARQL endpoint
+```python
+from spark_fuse.io.sparql import SPARQLReader
+
+sparql_reader = SPARQLReader()
+sparql_df = sparql_reader.read(
+    spark,
+    "https://query.wikidata.org/sparql",
+    source_config={
+        "query": """
+        PREFIX wd: <http://www.wikidata.org/entity/>
+        PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+        SELECT ?pokemon ?pokemonLabel ?pokedexNumber WHERE {
+          ?pokemon wdt:P31 wd:Q3966183 .
+          ?pokemon wdt:P1685 ?pokedexNumber .
+        }
+        LIMIT 5
+        """,
+        "request_type": "POST",
+        "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
+    },
+)
+if sparql_df.rdd.isEmpty():
+    print("Endpoint unavailable — adjust the query or check your network.")
+else:
+    sparql_df.show(5, truncate=False)
+```
+
+5) Register an external table in Unity Catalog
 ```python
 from spark_fuse.catalogs import unity
 
@@ -75,7 +104,7 @@ unity.register_external_delta_table(
 )
 ```
 
-5) Build date/time dimensions with rich attributes
+6) Build date/time dimensions with rich attributes
 ```python
 from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
 

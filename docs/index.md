@@ -1,9 +1,9 @@
 # spark-fuse
 
-spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, Hive Metastore, and REST APIs.
+spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, Hive Metastore, REST APIs, and SPARQL endpoints.
 
 ## Features
-- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, and REST APIs (JSON).
+- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, REST APIs (JSON), and SPARQL services.
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
 - DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
@@ -31,6 +31,28 @@ pokemon = reader.read(
     },
 )
 pokemon.select("name").show(5)
+
+from spark_fuse.io.sparql import SPARQLReader
+
+sparql_df = SPARQLReader().read(
+    spark,
+    "https://query.wikidata.org/sparql",
+    source_config={
+        "query": """
+        PREFIX wd: <http://www.wikidata.org/entity/>
+        PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
+        SELECT ?pokemon ?pokemonLabel ?pokedexNumber WHERE {
+          ?pokemon wdt:P31 wd:Q3966183 .
+          ?pokemon wdt:P1685 ?pokedexNumber .
+        }
+        LIMIT 5
+        """,
+        "request_type": "POST",
+        "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
+    },
+)
+sparql_df.show(5, truncate=False)
 
 from spark_fuse.catalogs import unity
 unity.create_catalog(spark, "analytics")

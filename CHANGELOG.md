@@ -6,6 +6,19 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-10-22
+### Added
+- SPARQL reader for HTTP endpoints with optional metadata capture, type coercion, and retry/backoff
+  handling, plus a demo notebook and API documentation.
+
+### Fixed
+- Ensure SPARQL reader builds explicit Spark schemas so metadata columns containing only ``None``
+  values no longer trigger ``NullType`` inference errors.
+
+### Documentation
+- Added SPARQL reader guide, updated README/site feature lists, and noted the demo notebook's
+  fallback sample for offline environments.
+
 ## [0.3.1] - 2025-10-22
 ### Added
 - REST API reader supports configurable request types (`GET`/`POST`), payloads via `request_body`,
@@ -73,7 +86,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/kevinsames/spark-fuse/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...v0.3.1
 [0.1.6]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...v0.1.5
