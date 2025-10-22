@@ -1,3 +1,10 @@
+"""REST API connector utilities for loading JSON payloads with pagination and retries.
+
+This module implements ``RestAPIReader`` which issues HTTP ``GET`` or ``POST`` requests
+against REST endpoints, supports query/response pagination strategies, and exposes
+Spark-friendly helpers to map payloads into DataFrames.
+"""
+
 from __future__ import annotations
 
 import functools
@@ -110,12 +117,14 @@ def _perform_request(
     timeout: float,
     max_retries: int,
     backoff_factor: float,
+    request_type: str,
     request_kwargs: Mapping[str, Any],
 ) -> Optional[Any]:
     attempts = max(max_retries, 0) + 1
+    method = request_type.upper()
     for attempt in range(attempts):
         try:
-            response = session.get(url, timeout=timeout, **request_kwargs)
+            response = session.request(method, url, timeout=timeout, **request_kwargs)
             if 200 <= response.status_code < 300:
                 try:
                     return response.json()
@@ -143,6 +152,7 @@ def _fetch_single(
     max_retries: int,
     backoff_factor: float,
     request_kwargs: Mapping[str, Any],
+    request_type: str,
     records_field: Optional[Sequence[str]],
 ) -> Iterator[str]:
     payload = _perform_request(
@@ -151,6 +161,7 @@ def _fetch_single(
         timeout=timeout,
         max_retries=max_retries,
         backoff_factor=backoff_factor,
+        request_type=request_type,
         request_kwargs=request_kwargs,
     )
     if payload is None:
@@ -168,6 +179,7 @@ def _fetch_with_response_pagination(
     max_retries: int,
     backoff_factor: float,
     request_kwargs: Mapping[str, Any],
+    request_type: str,
     records_field: Optional[Sequence[str]],
 ) -> Iterator[str]:
     pagination = item["pagination"]
@@ -194,6 +206,7 @@ def _fetch_with_response_pagination(
             timeout=timeout,
             max_retries=max_retries,
             backoff_factor=backoff_factor,
+            request_type=request_type,
             request_kwargs=request_kwargs,
         )
         if payload is None:
@@ -215,6 +228,7 @@ def _map_partition_fetch(
     backoff_factor: float,
     headers: Mapping[str, str],
     request_kwargs: Mapping[str, Any],
+    request_type: str,
     records_field: Optional[Sequence[str]],
 ) -> Iterator[str]:
     session = requests.Session()
@@ -230,6 +244,7 @@ def _map_partition_fetch(
                 max_retries=max_retries,
                 backoff_factor=backoff_factor,
                 request_kwargs=request_kwargs,
+                request_type=request_type,
                 records_field=records_field,
             )
         else:
@@ -240,13 +255,22 @@ def _map_partition_fetch(
                 max_retries=max_retries,
                 backoff_factor=backoff_factor,
                 request_kwargs=request_kwargs,
+                request_type=request_type,
                 records_field=records_field,
             )
 
 
 @register_connector
 class RestAPIReader(Connector):
-    """Connector that loads JSON payloads from REST APIs into Spark DataFrames."""
+    """Load JSON-centric REST API payloads into Spark DataFrames.
+
+    The reader orchestrates HTTP calls with retry/backoff policies, supports both
+    query-parameter and response-driven pagination styles, and surfaces the results as
+    a Spark DataFrame after normalising each record into a JSON string. ``request_type``
+    enables switching between ``GET`` and ``POST`` semantics while preserving shared
+    pagination and request configuration, and ``request_body`` plugs in payloads for
+    POST requests without overriding custom ``request_kwargs``.
+    """
 
     name = "rest"
 
@@ -265,6 +289,62 @@ class RestAPIReader(Connector):
         headers: Optional[Mapping[str, str]] = None,
         **kwargs: Any,
     ) -> DataFrame:
+        """Execute REST requests and return a DataFrame parsed from the responses.
+
+        Parameters
+        ----------
+        spark:
+            Active ``SparkSession`` used to create the resulting DataFrame.
+        source:
+            Base URL (string) or iterable of URLs to request.
+        fmt:
+            Unused; included for API compatibility with other connectors.
+        schema:
+            Optional Spark schema to enforce; defaults to inference from JSON payloads.
+        source_config / options / kwargs:
+            Additional configuration merged together (pagination, params, retry controls,
+            ``request_type``, ``request_body``, ``request_body_type``, headers, Spark reader
+            options, and low-level ``request_kwargs`` overrides).
+        headers:
+            Extra HTTP headers applied on top of ``source_config['headers']``.
+
+        Returns
+        -------
+        pyspark.sql.DataFrame
+            DataFrame constructed from the normalised JSON response records.
+
+        Notes
+        -----
+        When ``request_body`` is provided it is only applied for ``POST`` requests. JSON payloads
+        are attached automatically unless ``request_body_type`` is set to ``"data"`` / ``"form"`` /
+        ``"raw"`` to control how the body is forwarded to ``requests.Session.request``.
+
+        Examples
+        --------
+        Basic GET with pagination:
+
+        >>> reader = RestAPIReader()
+        >>> df = reader.read(
+        ...     spark,
+        ...     "https://pokeapi.co/api/v2/pokemon",
+        ...     source_config={
+        ...         "records_field": "results",
+        ...         "pagination": {"mode": "response", "field": "next", "max_pages": 2},
+        ...     },
+        ... )
+
+        POST with a JSON body:
+
+        >>> search_df = reader.read(
+        ...     spark,
+        ...     "https://example.com/search",
+        ...     source_config={
+        ...         "request_type": "POST",
+        ...         "request_body": {"term": "pikachu"},
+        ...         "records_field": "results",
+        ...     },
+        ... )
+        """
         config: Dict[str, Any] = {}
         if source_config:
             config.update(source_config)
@@ -294,6 +374,30 @@ class RestAPIReader(Connector):
         if isinstance(config.get("request_kwargs"), Mapping):
             request_kwargs.update(config["request_kwargs"])
 
+        request_type = str(config.get("request_type", "GET")).upper()
+        if request_type not in {"GET", "POST"}:
+            raise ValueError("request_type must be either 'GET' or 'POST'")
+
+        request_body = config.get("request_body")
+        if request_body is not None and request_type != "POST":
+            raise ValueError("request_body is only supported when request_type='POST'")
+
+        if request_body is not None:
+            body_mode = config.get("request_body_type")
+            if body_mode is None:
+                body_mode = "json" if isinstance(request_body, Mapping) else "data"
+            body_mode = str(body_mode).lower()
+            if body_mode == "json":
+                request_kwargs.setdefault("json", request_body)
+            elif body_mode in {"data", "form"}:
+                request_kwargs.setdefault("data", request_body)
+            elif body_mode in {"raw", "content"}:
+                request_kwargs.setdefault("data", request_body)
+            else:
+                raise ValueError(
+                    "request_body_type must be one of {'json', 'data', 'form', 'raw', 'content'}"
+                )
+
         pagination = config.get("pagination")
         params = dict(config.get("params", {})) if isinstance(config.get("params"), Mapping) else {}
 
@@ -317,6 +421,7 @@ class RestAPIReader(Connector):
             "backoff_factor": backoff_factor,
             "headers": base_headers,
             "request_kwargs": request_kwargs,
+            "request_type": request_type,
             "records_field": records_field,
         }
 
