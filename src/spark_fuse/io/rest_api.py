@@ -110,12 +110,14 @@ def _perform_request(
     timeout: float,
     max_retries: int,
     backoff_factor: float,
+    request_type: str,
     request_kwargs: Mapping[str, Any],
 ) -> Optional[Any]:
     attempts = max(max_retries, 0) + 1
+    method = request_type.upper()
     for attempt in range(attempts):
         try:
-            response = session.get(url, timeout=timeout, **request_kwargs)
+            response = session.request(method, url, timeout=timeout, **request_kwargs)
             if 200 <= response.status_code < 300:
                 try:
                     return response.json()
@@ -143,6 +145,7 @@ def _fetch_single(
     max_retries: int,
     backoff_factor: float,
     request_kwargs: Mapping[str, Any],
+    request_type: str,
     records_field: Optional[Sequence[str]],
 ) -> Iterator[str]:
     payload = _perform_request(
@@ -151,6 +154,7 @@ def _fetch_single(
         timeout=timeout,
         max_retries=max_retries,
         backoff_factor=backoff_factor,
+        request_type=request_type,
         request_kwargs=request_kwargs,
     )
     if payload is None:
@@ -168,6 +172,7 @@ def _fetch_with_response_pagination(
     max_retries: int,
     backoff_factor: float,
     request_kwargs: Mapping[str, Any],
+    request_type: str,
     records_field: Optional[Sequence[str]],
 ) -> Iterator[str]:
     pagination = item["pagination"]
@@ -194,6 +199,7 @@ def _fetch_with_response_pagination(
             timeout=timeout,
             max_retries=max_retries,
             backoff_factor=backoff_factor,
+            request_type=request_type,
             request_kwargs=request_kwargs,
         )
         if payload is None:
@@ -215,6 +221,7 @@ def _map_partition_fetch(
     backoff_factor: float,
     headers: Mapping[str, str],
     request_kwargs: Mapping[str, Any],
+    request_type: str,
     records_field: Optional[Sequence[str]],
 ) -> Iterator[str]:
     session = requests.Session()
@@ -230,6 +237,7 @@ def _map_partition_fetch(
                 max_retries=max_retries,
                 backoff_factor=backoff_factor,
                 request_kwargs=request_kwargs,
+                request_type=request_type,
                 records_field=records_field,
             )
         else:
@@ -240,6 +248,7 @@ def _map_partition_fetch(
                 max_retries=max_retries,
                 backoff_factor=backoff_factor,
                 request_kwargs=request_kwargs,
+                request_type=request_type,
                 records_field=records_field,
             )
 
@@ -294,6 +303,10 @@ class RestAPIReader(Connector):
         if isinstance(config.get("request_kwargs"), Mapping):
             request_kwargs.update(config["request_kwargs"])
 
+        request_type = str(config.get("request_type", "GET")).upper()
+        if request_type not in {"GET", "POST"}:
+            raise ValueError("request_type must be either 'GET' or 'POST'")
+
         pagination = config.get("pagination")
         params = dict(config.get("params", {})) if isinstance(config.get("params"), Mapping) else {}
 
@@ -317,6 +330,7 @@ class RestAPIReader(Connector):
             "backoff_factor": backoff_factor,
             "headers": base_headers,
             "request_kwargs": request_kwargs,
+            "request_type": request_type,
             "records_field": records_field,
         }
 

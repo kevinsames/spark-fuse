@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-10-22
+### Added
+- REST API reader supports configurable request types (`GET`/`POST`) with updated notebook and documentation examples.
+
 ## [0.1.6] - 2025-09-05
 ### Changed
 - Rename module `spark_fuse.utils.scd2` to `spark_fuse.utils.scd` (update imports accordingly).
@@ -68,7 +72,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...v0.3.1
 [0.1.6]: https://github.com/kevinsames/spark-fuse/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kevinsames/spark-fuse/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kevinsames/spark-fuse/compare/v0.1.3...v0.1.4

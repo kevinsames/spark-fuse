@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import socketserver
 import json
 import threading
 from http.server import BaseHTTPRequestHandler
-from typing import Any, Dict
-import socketserver
+from typing import Any, Dict, Tuple
 
 import pytest
 
@@ -16,25 +16,46 @@ class _ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
 
 
+ResponseKey = Tuple[str, str]
+
+
 def _start_mock_server(
-    responses: Dict[str, Any], headers_log: list[str] | None = None
+    responses: Dict[str | ResponseKey, Any],
+    headers_log: list[str] | None = None,
+    request_log: list[dict[str, Any]] | None = None,
 ) -> tuple[_ThreadedTCPServer, str]:
     class _Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            payload = responses.get(self.path)
+        def _respond(self, method: str, body: bytes | None = None):
+            key: ResponseKey = (method, self.path)
+            payload = responses.get(key)
+            if payload is None:
+                payload = responses.get(self.path)
             if payload is None:
                 self.send_response(404)
                 self.end_headers()
                 self.wfile.write(b"{}")
                 return
-            body = json.dumps(payload).encode("utf-8")
+            encoded = json.dumps(payload).encode("utf-8")
             if headers_log is not None:
                 headers_log.append(self.headers.get("User-Agent"))
+            if request_log is not None:
+                entry: dict[str, Any] = {"method": method, "path": self.path}
+                if body is not None:
+                    entry["body"] = body
+                request_log.append(entry)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(encoded)
+
+        def do_GET(self):
+            self._respond("GET")
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else b""
+            self._respond("POST", body if body else None)
 
         def log_message(self, format, *args):
             return
@@ -123,3 +144,43 @@ def test_rest_api_reader_response_pagination_next_links(spark):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.usefixtures("spark")
+def test_rest_api_reader_post_request(spark):
+    request_log: list[dict[str, Any]] = []
+    server_responses: Dict[str | ResponseKey, Any] = {}
+    server, server_base = _start_mock_server(server_responses, request_log=request_log)
+    try:
+        path = "/search"
+        server_responses[("POST", path)] = {
+            "results": [{"id": 42, "term": "pikachu"}],
+        }
+
+        reader = RestAPIReader()
+        df = reader.read(
+            spark,
+            f"{server_base}{path}",
+            source_config={
+                "request_type": "POST",
+                "records_field": "results",
+                "request_kwargs": {"json": {"term": "pikachu"}},
+                "parallelism": 1,
+            },
+        )
+
+        collected = [row.asDict() for row in df.collect()]
+        assert collected == [{"id": 42, "term": "pikachu"}]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert request_log
+    post_entries = [entry for entry in request_log if entry["method"] == "POST"]
+    assert post_entries
+    payloads = [
+        json.loads(entry["body"].decode("utf-8"))
+        for entry in post_entries
+        if "body" in entry and entry["body"]
+    ]
+    assert {"term": "pikachu"} in payloads

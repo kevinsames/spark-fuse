@@ -48,12 +48,16 @@ from spark_fuse.io.rest_api import RestAPIReader
 
 reader = RestAPIReader()
 config = {
+    "request_type": "GET",  # switch to "POST" for endpoints that require a body
     "records_field": "results",
     "pagination": {"mode": "response", "field": "next", "max_pages": 2},
+    "params": {"limit": 20},
 }
 pokemon = reader.read(spark, "https://pokeapi.co/api/v2/pokemon", source_config=config)
 pokemon.select("name").show(5)
 ```
+Need to hit a POST endpoint? Set `"request_type": "POST"` and pass your payload through
+`"request_kwargs": {"json": {...}}` (or `data`, `headers`, etc.) so the reader issues POSTs with the body you expect.
 
 4) Register an external table in Unity Catalog
 ```python

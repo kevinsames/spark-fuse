@@ -13,6 +13,7 @@ pokemon = reader.read(
     spark,
     "https://pokeapi.co/api/v2/pokemon",
     source_config={
+        "request_type": "GET",  # switch to "POST" when the API expects a payload
         "records_field": "results",
         "pagination": {"mode": "response", "field": "next", "max_pages": 2},
     },
@@ -25,6 +26,7 @@ Highlights:
 
 - Cursor-based (`response`) and offset-based (`token`) pagination.
 - Optional request headers and query parameters.
+- Issue `GET` or `POST` calls by setting `request_type`, forwarding payloads via `request_kwargs`.
 - Built-in retry/backoff controls.
 
 ## Notebook walkthrough
