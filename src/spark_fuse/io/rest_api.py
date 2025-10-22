@@ -154,6 +154,8 @@ def _fetch_single(
     request_kwargs: Mapping[str, Any],
     request_type: str,
     records_field: Optional[Sequence[str]],
+    include_response_payload: bool,
+    response_payload_field: Optional[str],
 ) -> Iterator[str]:
     payload = _perform_request(
         session,
@@ -167,8 +169,12 @@ def _fetch_single(
     if payload is None:
         return
     records = _extract_records(payload, records_field)
+    response_value: Optional[Any] = payload if include_response_payload else None
     for record in records:
-        yield json.dumps(_ensure_dict(record))
+        row = _ensure_dict(record)
+        if response_value is not None and response_payload_field:
+            row[response_payload_field] = response_value
+        yield json.dumps(row)
 
 
 def _fetch_with_response_pagination(
@@ -181,6 +187,8 @@ def _fetch_with_response_pagination(
     request_kwargs: Mapping[str, Any],
     request_type: str,
     records_field: Optional[Sequence[str]],
+    include_response_payload: bool,
+    response_payload_field: Optional[str],
 ) -> Iterator[str]:
     pagination = item["pagination"]
     next_field = pagination.get("field", "next")
@@ -212,8 +220,12 @@ def _fetch_with_response_pagination(
         if payload is None:
             break
         records = _extract_records(payload, records_field)
+        response_value: Optional[Any] = payload if include_response_payload else None
         for record in records:
-            yield json.dumps(_ensure_dict(record))
+            row = _ensure_dict(record)
+            if response_value is not None and response_payload_field:
+                row[response_payload_field] = response_value
+            yield json.dumps(row)
         next_value = _get_nested_value(payload, next_path) if next_path else None
         if not next_value:
             break
@@ -230,6 +242,8 @@ def _map_partition_fetch(
     request_kwargs: Mapping[str, Any],
     request_type: str,
     records_field: Optional[Sequence[str]],
+    include_response_payload: bool,
+    response_payload_field: Optional[str],
 ) -> Iterator[str]:
     session = requests.Session()
     if headers:
@@ -246,6 +260,8 @@ def _map_partition_fetch(
                 request_kwargs=request_kwargs,
                 request_type=request_type,
                 records_field=records_field,
+                include_response_payload=include_response_payload,
+                response_payload_field=response_payload_field,
             )
         else:
             yield from _fetch_single(
@@ -257,6 +273,8 @@ def _map_partition_fetch(
                 request_kwargs=request_kwargs,
                 request_type=request_type,
                 records_field=records_field,
+                include_response_payload=include_response_payload,
+                response_payload_field=response_payload_field,
             )
 
 
@@ -268,8 +286,9 @@ class RestAPIReader(Connector):
     query-parameter and response-driven pagination styles, and surfaces the results as
     a Spark DataFrame after normalising each record into a JSON string. ``request_type``
     enables switching between ``GET`` and ``POST`` semantics while preserving shared
-    pagination and request configuration, and ``request_body`` plugs in payloads for
-    POST requests without overriding custom ``request_kwargs``.
+    pagination and request configuration, ``request_body`` plugs in payloads for POST
+    requests without overriding custom ``request_kwargs``, and
+    ``include_response_payload`` can retain the full server response alongside each row.
     """
 
     name = "rest"
@@ -303,8 +322,8 @@ class RestAPIReader(Connector):
             Optional Spark schema to enforce; defaults to inference from JSON payloads.
         source_config / options / kwargs:
             Additional configuration merged together (pagination, params, retry controls,
-            ``request_type``, ``request_body``, ``request_body_type``, headers, Spark reader
-            options, and low-level ``request_kwargs`` overrides).
+            ``request_type``, ``request_body``, ``request_body_type``, ``include_response_payload``,
+            headers, Spark reader options, and low-level ``request_kwargs`` overrides).
         headers:
             Extra HTTP headers applied on top of ``source_config['headers']``.
 
@@ -317,7 +336,9 @@ class RestAPIReader(Connector):
         -----
         When ``request_body`` is provided it is only applied for ``POST`` requests. JSON payloads
         are attached automatically unless ``request_body_type`` is set to ``"data"`` / ``"form"`` /
-        ``"raw"`` to control how the body is forwarded to ``requests.Session.request``.
+        ``"raw"`` to control how the body is forwarded to ``requests.Session.request``. Enable
+        ``include_response_payload`` to add a column containing the full decoded response for each
+        record (named via ``response_payload_field``).
 
         Examples
         --------
@@ -342,6 +363,7 @@ class RestAPIReader(Connector):
         ...         "request_type": "POST",
         ...         "request_body": {"term": "pikachu"},
         ...         "records_field": "results",
+        ...         "include_response_payload": True,
         ...     },
         ... )
         """
@@ -401,6 +423,13 @@ class RestAPIReader(Connector):
         pagination = config.get("pagination")
         params = dict(config.get("params", {})) if isinstance(config.get("params"), Mapping) else {}
 
+        include_response_payload = bool(config.get("include_response_payload", False))
+        response_payload_field: Optional[str] = None
+        if include_response_payload:
+            response_payload_field = str(config.get("response_payload_field", "response_payload"))
+            if not response_payload_field:
+                raise ValueError("response_payload_field must be a non-empty string when enabled")
+
         work_items = self._prepare_work_items(source, params, pagination)
 
         if not work_items:
@@ -423,6 +452,8 @@ class RestAPIReader(Connector):
             "request_kwargs": request_kwargs,
             "request_type": request_type,
             "records_field": records_field,
+            "include_response_payload": include_response_payload,
+            "response_payload_field": response_payload_field,
         }
 
         payload_rdd = sc.parallelize(work_items, numSlices=parallelism).mapPartitions(

@@ -165,12 +165,20 @@ def test_rest_api_reader_post_request(spark):
                 "request_type": "POST",
                 "records_field": "results",
                 "request_body": {"term": "pikachu"},
+                "include_response_payload": True,
+                "response_payload_field": "raw_payload",
                 "parallelism": 1,
             },
         )
 
-        collected = [row.asDict() for row in df.collect()]
-        assert collected == [{"id": 42, "term": "pikachu"}]
+        collected = [row.asDict(recursive=True) for row in df.collect()]
+        assert collected == [
+            {
+                "id": 42,
+                "term": "pikachu",
+                "raw_payload": {"results": [{"id": 42, "term": "pikachu"}]},
+            }
+        ]
     finally:
         server.shutdown()
         server.server_close()

@@ -28,6 +28,7 @@ Highlights:
 - Optional request headers and query parameters.
 - Issue `GET` or `POST` calls by setting `request_type`, attaching payloads with `request_body`.
 - Built-in retry/backoff controls.
+- Optional `include_response_payload` column to capture the full server JSON per row.
 
 ## Notebook walkthrough
 
