@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-10-22
+### Added
+- SPARQL connector with metadata-aware schema handling, retry configuration, and type coercion.
+- Demo notebook showcasing Wikidata queries with a fallback sample for offline environments.
+- Documentation updates covering SPARQL usage, including a new guide and API reference entry.
+
+### Fixed
+- Explicit schema derivation for SPARQL result sets prevents Spark from emitting `NullType`
+  inference errors when metadata columns contain only `None` values.
+
 ## [0.3.0] - 2025-09-09
 ### Added
 - Date and time dimension helpers (`create_date_dataframe`, `create_time_dataframe`) with calendar and clock attributes.
@@ -123,7 +133,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...v0.3.2
 [0.3.0]: https://github.com/kevinsames/spark-fuse/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/kevinsames/spark-fuse/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kevinsames/spark-fuse/compare/v0.1.9...v0.2.0
