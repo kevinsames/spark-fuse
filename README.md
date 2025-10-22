@@ -58,6 +58,7 @@ pokemon.select("name").show(5)
 ```
 Need to hit a POST endpoint? Set `"request_type": "POST"` and attach your payload with
 `"request_body": {...}` (defaults to JSON encoding—add `"request_body_type": "data"` for form bodies).
+Flip on `"include_response_payload": True` to add a `response_payload` column with the raw server JSON.
 
 4) Register an external table in Unity Catalog
 ```python
