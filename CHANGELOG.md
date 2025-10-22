@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [0.3.1] - 2025-10-22
 ### Added
-- REST API reader supports configurable request types (`GET`/`POST`) with updated notebook and documentation examples.
+- REST API reader supports configurable request types (`GET`/`POST`) and payloads via `request_body`, with updated notebook and documentation examples.
 
 ## [0.1.6] - 2025-09-05
 ### Changed

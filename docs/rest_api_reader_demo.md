@@ -26,7 +26,7 @@ Highlights:
 
 - Cursor-based (`response`) and offset-based (`token`) pagination.
 - Optional request headers and query parameters.
-- Issue `GET` or `POST` calls by setting `request_type`, forwarding payloads via `request_kwargs`.
+- Issue `GET` or `POST` calls by setting `request_type`, attaching payloads with `request_body`.
 - Built-in retry/backoff controls.
 
 ## Notebook walkthrough

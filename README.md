@@ -56,8 +56,8 @@ config = {
 pokemon = reader.read(spark, "https://pokeapi.co/api/v2/pokemon", source_config=config)
 pokemon.select("name").show(5)
 ```
-Need to hit a POST endpoint? Set `"request_type": "POST"` and pass your payload through
-`"request_kwargs": {"json": {...}}` (or `data`, `headers`, etc.) so the reader issues POSTs with the body you expect.
+Need to hit a POST endpoint? Set `"request_type": "POST"` and attach your payload with
+`"request_body": {...}` (defaults to JSON encoding—add `"request_body_type": "data"` for form bodies).
 
 4) Register an external table in Unity Catalog
 ```python

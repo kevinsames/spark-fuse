@@ -164,7 +164,7 @@ def test_rest_api_reader_post_request(spark):
             source_config={
                 "request_type": "POST",
                 "records_field": "results",
-                "request_kwargs": {"json": {"term": "pikachu"}},
+                "request_body": {"term": "pikachu"},
                 "parallelism": 1,
             },
         )
