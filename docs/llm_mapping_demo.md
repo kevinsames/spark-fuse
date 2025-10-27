@@ -39,4 +39,4 @@ Key features:
 
 Explore the end-to-end workflow (including configuration tips) in the notebook:
 
-- [LLM Mapping Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/llm_mapping_demo.ipynb)
+- [LLM Mapping Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/llm_mapping_demo.ipynb)

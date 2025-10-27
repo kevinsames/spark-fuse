@@ -1,7 +1,7 @@
 # SPARQL Reader Demo
 
 `SPARQLReader` executes SPARQL queries over HTTP(S) endpoints and returns the results as Spark
-DataFrames. The companion notebook `notebooks/sparql_reader_demo.ipynb` walks through a live query
+DataFrames. The companion notebook `notebooks/demos/sparql_reader_demo.ipynb` walks through a live query
 against the public Wikidata service and includes a small fallback dataset so the example remains
 useful when the endpoint is unavailable (for example in air-gapped environments).
 

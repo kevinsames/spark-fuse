@@ -114,7 +114,7 @@ time_dim = create_time_dataframe(spark, "00:00:00", "23:59:00", interval_seconds
 date_dim.select("date", "year", "week", "day_name").show()
 time_dim.select("time", "hour", "minute").show(5)
 ```
-Check out `notebooks/date_time_dimensions_demo.ipynb` for an interactive walkthrough.
+Check out `notebooks/demos/date_time_dimensions_demo.ipynb` for an interactive walkthrough.
 
 LLM-Powered Column Mapping
 ```python

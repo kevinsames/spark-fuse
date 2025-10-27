@@ -117,7 +117,7 @@ dates.select("date", "year", "week", "day_name").show()
 times.select("time", "hour", "minute").show()
 ```
 
-Try the interactive `notebooks/date_time_dimensions_demo.ipynb` notebook to explore the helpers end-to-end.
+Try the interactive `notebooks/demos/date_time_dimensions_demo.ipynb` notebook to explore the helpers end-to-end.
 
 ## CLI
 - `spark-fuse connectors`
