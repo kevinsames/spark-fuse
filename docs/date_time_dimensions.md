@@ -46,4 +46,4 @@ The helper generates evenly spaced times between the provided bounds (inclusive)
 
 Explore the full workflow in the interactive notebook:
 
-- [Date & Time Dimensions Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/date_time_dimensions_demo.ipynb)
+- [Date & Time Dimensions Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/date_time_dimensions_demo.ipynb)

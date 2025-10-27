@@ -94,4 +94,4 @@ apply_scd(
 
 ## Notebook walkthrough
 
-- [SCD Upsert Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/scd_demo.ipynb)
+- [SCD Upsert Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/scd_demo.ipynb)

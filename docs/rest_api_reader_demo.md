@@ -34,4 +34,4 @@ Highlights:
 
 See the connector in action with additional configuration examples:
 
-- [REST API Reader Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/rest_api_reader_demo.ipynb)
+- [REST API Reader Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/rest_api_reader_demo.ipynb)

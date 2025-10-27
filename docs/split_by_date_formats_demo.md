@@ -37,4 +37,4 @@ Capabilities:
 
 Try the full example with additional parsing strategies in the notebook:
 
-- [Split by Date Formats Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/split_by_date_formats_demo.ipynb)
+- [Split by Date Formats Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/split_by_date_formats_demo.ipynb)

@@ -20,7 +20,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Added
 - Date and time dimension helpers (`create_date_dataframe`, `create_time_dataframe`) with calendar and clock attributes.
 - Unit tests covering the new DataFrame utilities.
-- Demo notebook (`notebooks/date_time_dimensions_demo.ipynb`) showcasing the dimension builders in action.
+- Demo notebook (`notebooks/demos/date_time_dimensions_demo.ipynb`) showcasing the dimension builders in action.
 
 ### Documentation
 - README and site homepage updated with calendar/time examples and notebook reference.
