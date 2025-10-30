@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import Dict, Optional
 
 from pyspark.sql import SparkSession
@@ -85,11 +86,27 @@ def create_session(
     """
     env = detect_environment()
 
+    python_exec = os.environ.get("PYSPARK_PYTHON", sys.executable)
+    driver_python = os.environ.get("PYSPARK_DRIVER_PYTHON", python_exec)
+
+    active = SparkSession.getActiveSession()
+    if active is not None:
+        try:
+            current_exec = active.sparkContext.pythonExec
+        except Exception:
+            current_exec = None
+        if current_exec and os.path.realpath(current_exec) != os.path.realpath(python_exec):
+            active.stop()
+
     builder = SparkSession.builder.appName(app_name)
     if master:
         builder = builder.master(master)
     elif env == "local":
         builder = builder.master("local[2]")
+
+    builder = builder.config("spark.pyspark.python", python_exec).config(
+        "spark.pyspark.driver.python", driver_python
+    )
 
     builder = _apply_delta_configs(builder)
 

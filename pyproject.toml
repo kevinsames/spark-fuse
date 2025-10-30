@@ -31,8 +31,8 @@ dependencies = [
   "rich>=13",
   "pydantic>=2",
   "requests>=2",
-  "numpy>=1.23,<2.0",
-  "pandas>=1.5",
+  "numpy>=2,<3",
+  "pandas>=2,<3",
   "sentence-transformers>=2.5",
 ]
 

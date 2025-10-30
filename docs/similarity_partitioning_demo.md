@@ -49,7 +49,9 @@ pipeline = SimilarityPipeline(
         input_col="description",
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         normalize=True,
+        device="cpu",
         use_vectorized=False,
+        prefer_stub=False,
     ),
     partitioner=KMeansPartitioner(k=3, seed=7),
     similarity_metric=CosineSimilarity(embedding_col="embedding"),
@@ -91,9 +93,12 @@ text_embedder = SentenceEmbeddingGenerator(
     model_name="sentence-transformers/all-MiniLM-L6-v2",
     batch_size=32,
     normalize=True,
+    prefer_stub=False,
 )
 ```
 
 The generator depends on the `sentence-transformers` package, which is installed alongside `spark-fuse`.
 
 Vectorized pandas UDFs can speed up inference, but they require pandas and numpy on every Spark executor. Leave `use_vectorized=False` (default) when you prefer the pure PySpark UDF fallback, or set it to `True` once your cluster has the dependencies installed.
+
+Set `prefer_stub=True` when you explicitly want the deterministic hash-based fallback without attempting to import Hugging Face models. This is useful on constrained environments where importing `sentence-transformers` could terminate the Python worker.

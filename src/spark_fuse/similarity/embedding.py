@@ -126,8 +126,41 @@ def _load_sentence_model(model_name: str, device: Optional[str]) -> object:
     if key in _SENTENCE_TRANSFORMER_CACHE:
         return _SENTENCE_TRANSFORMER_CACHE[key]
 
+    import os
+    import sys
+
+    debug = os.environ.get("SPARK_FUSE_DEBUG_SENTENCE_EMBEDDING") == "1"
+
+    # Default to offline mode so environments without network access can rely on cached models.
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    os.environ.setdefault("PYTHONFAULTHANDLER", "1")
+    os.environ.setdefault("PYTORCH_ENABLE_BACKTRACE", "1")
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    os.environ.setdefault("KMP_INIT_AT_FORK", "FALSE")
+    os.environ.setdefault("KMP_BLOCKTIME", "0")
+
+    if debug:
+        print(
+            f"[SentenceEmbeddingGenerator] loading model {model_name} device={device} python={sys.executable}",
+            flush=True,
+        )
+
     try:
         from sentence_transformers import SentenceTransformer
+
+        try:  # pragma: no cover - torch optional
+            import torch
+
+            torch.set_num_threads(1)
+            torch.set_num_interop_threads(1)
+        except Exception:
+            pass
     except Exception as exc:  # pragma: no cover - dependency error path
         _warn_sentence_fallback(key, exc)
         model = _build_sentence_stub(model_name)
@@ -137,6 +170,11 @@ def _load_sentence_model(model_name: str, device: Optional[str]) -> object:
                 model = SentenceTransformer(model_name)
             else:
                 model = SentenceTransformer(model_name, device=device)
+            if debug:
+                print(
+                    f"[SentenceEmbeddingGenerator] model {model_name} loaded (device={device}) -> actual {getattr(model, 'device', 'unknown')}",
+                    flush=True,
+                )
         except Exception as exc:  # pragma: no cover - runtime import issues
             _warn_sentence_fallback(key, exc)
             model = _build_sentence_stub(model_name)
@@ -164,6 +202,10 @@ class SentenceEmbeddingGenerator(EmbeddingGenerator):
         Optional device string forwarded to ``SentenceTransformer`` (for example ``"cuda"``).
     drop_input:
         Drop the original ``input_col`` once the embedding column is added.
+    prefer_stub:
+        When ``True`` the deterministic hash-based stub is used instead of loading
+        ``sentence-transformers``. Helpful on environments where importing the real
+        dependency is unreliable.
     """
 
     input_col: str = "text"
@@ -173,6 +215,7 @@ class SentenceEmbeddingGenerator(EmbeddingGenerator):
     device: Optional[str] = None
     drop_input: bool = False
     use_vectorized: bool = False
+    prefer_stub: bool = False
 
     def transform(self, df: DataFrame) -> DataFrame:
         model_name = self.model_name
@@ -181,6 +224,13 @@ class SentenceEmbeddingGenerator(EmbeddingGenerator):
         normalize = self.normalize
         input_col = self.input_col
         output_col = self.output_col
+        cache_key = (model_name, device)
+
+        if self.prefer_stub:
+            _SENTENCE_TRANSFORMER_CACHE[cache_key] = _build_sentence_stub(model_name)
+        else:
+            # Prime the cache on the driver so worker failures surface upfront.
+            _load_sentence_model(model_name, device)
 
         if self.use_vectorized:
             try:
@@ -211,14 +261,37 @@ class SentenceEmbeddingGenerator(EmbeddingGenerator):
                 return transformed
 
         def _encode_row(value: Optional[str]) -> Optional[list]:
+            import sys
+            import os
+
+            debug_local = os.environ.get("SPARK_FUSE_DEBUG_SENTENCE_EMBEDDING") == "1"
+            try:
+                import numpy  # type: ignore
+            except Exception:
+                numpy_info = "unavailable"
+            else:
+                numpy_info = getattr(numpy, "__version__", "unknown")
+            if debug_local and not hasattr(_encode_row, "_diag_printed"):
+                print(
+                    f"[SentenceEmbeddingGenerator] worker python={sys.executable} numpy={numpy_info}",
+                    flush=True,
+                )
+                setattr(_encode_row, "_diag_printed", True)
+
             model = _load_sentence_model(model_name, device)
             text = value if value is not None else ""
+            if debug_local:
+                print("[SentenceEmbeddingGenerator] starting encode", flush=True)
             embeddings = model.encode(
                 [text],
                 batch_size=1,
                 normalize_embeddings=normalize,
             )
-            if not embeddings:
+            if debug_local:
+                print("[SentenceEmbeddingGenerator] encode finished", flush=True)
+            if embeddings is None:
+                return None
+            if len(embeddings) == 0:
                 return None
             vector = embeddings[0]
             return [float(x) for x in vector]
