@@ -48,6 +48,7 @@ nav:
       - REST API Reader Demo: rest_api_reader_demo.md
       - SPARQL Reader Demo: sparql_reader_demo.md
       - Split by Date Formats Demo: split_by_date_formats_demo.md
+      - Similarity Partitioning Demo: similarity_partitioning_demo.md
       - SCD Upsert Demo: scd_upsert_demo.md
   - Project:
       - Contributing: contributing.md

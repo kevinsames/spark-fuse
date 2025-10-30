@@ -7,6 +7,7 @@ spark-fuse is an open-source toolkit for PySpark — providing utilities, connec
 - Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
 - DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
+- Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
 - Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
 
 ## Quickstart
@@ -118,6 +119,29 @@ times.select("time", "hour", "minute").show()
 ```
 
 Try the interactive `notebooks/demos/date_time_dimensions_demo.ipynb` notebook to explore the helpers end-to-end.
+
+### Similarity partitioning (new in 0.4.0)
+```python
+from spark_fuse.similarity import (
+    CosineSimilarity,
+    IdentityEmbeddingGenerator,
+    KMeansPartitioner,
+    MaxColumnChoice,
+    SimilarityPipeline,
+)
+
+pipeline = SimilarityPipeline(
+    embedding_generator=IdentityEmbeddingGenerator(input_col="embedding"),
+    partitioner=KMeansPartitioner(k=3, seed=7),
+    similarity_metric=CosineSimilarity(embedding_col="embedding"),
+    choice_function=MaxColumnChoice(column="score"),
+)
+
+clustered = pipeline.run(df)
+representatives = pipeline.select_representatives(clustered)
+```
+
+The new guide in `docs/similarity_partitioning_demo.md` walks through the workflow, and `notebooks/demos/similarity_pipeline_demo.ipynb` provides an interactive companion.
 
 ## CLI
 - `spark-fuse connectors`
