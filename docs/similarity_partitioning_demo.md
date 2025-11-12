@@ -58,6 +58,14 @@ pipeline = SimilarityPipeline(
     choice_function=MaxColumnChoice(column="score"),
 )
 ```
+If you are unsure how many clusters to request in advance, switch to
+``AutoKMeansPartitioner`` and specify the desired rows per cluster instead:
+
+```python
+from spark_fuse.similarity import AutoKMeansPartitioner
+
+partitioner = AutoKMeansPartitioner(target_partition_size=10_000, seed=7)
+```
 
 If your environment cannot import `sentence-transformers`, the generator falls back to a lightweight deterministic stub so the demo keeps running. Install the real dependency (and PyTorch) when you need production-grade embeddings.
 

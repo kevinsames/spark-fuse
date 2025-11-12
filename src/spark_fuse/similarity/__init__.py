@@ -7,11 +7,12 @@ similarity metric configuration, clustering, and representative selection.
 
 from .embedding import EmbeddingGenerator, IdentityEmbeddingGenerator, SentenceEmbeddingGenerator
 from .metrics import CosineSimilarity, EuclideanDistance, SimilarityMetric
-from .partitioners import KMeansPartitioner, Partitioner
+from .partitioners import AutoKMeansPartitioner, KMeansPartitioner, Partitioner
 from .choices import ChoiceFunction, FirstItemChoice, MaxColumnChoice
 from .pipeline import SimilarityPipeline
 
 __all__ = [
+    "AutoKMeansPartitioner",
     "ChoiceFunction",
     "CosineSimilarity",
     "EmbeddingGenerator",
