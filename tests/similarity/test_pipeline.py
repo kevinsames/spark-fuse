@@ -1,6 +1,7 @@
 from pyspark.sql import functions as F
 
 from spark_fuse.similarity import (
+    AutoKMeansPartitioner,
     CosineSimilarity,
     FirstItemChoice,
     IdentityEmbeddingGenerator,
@@ -50,3 +51,26 @@ def test_choice_function_returns_one_rep_per_cluster(spark):
     assert as_dict[0] == "b"
     assert as_dict[1] == "d"
     assert len(as_dict) == 2
+
+
+def test_auto_kmeans_partitioner_infers_cluster_count(spark):
+    data = [
+        (0, [0.0, 0.0]),
+        (1, [0.2, -0.1]),
+        (2, [10.0, 10.2]),
+        (3, [10.3, 9.7]),
+        (4, [9.8, 10.1]),
+        (5, [0.1, 0.2]),
+    ]
+    df = spark.createDataFrame(data, ["id", "features"])
+
+    pipeline = SimilarityPipeline(
+        embedding_generator=IdentityEmbeddingGenerator(input_col="features"),
+        partitioner=AutoKMeansPartitioner(target_partition_size=3, seed=42),
+        similarity_metric=CosineSimilarity(embedding_col="embedding"),
+    )
+
+    clustered = pipeline.run(df)
+    num_clusters = clustered.select("cluster_id").distinct().count()
+
+    assert num_clusters == 2
