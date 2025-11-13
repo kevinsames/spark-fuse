@@ -1,14 +1,13 @@
 # spark-fuse
 
-spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), Unity Catalog, Hive Metastore, REST APIs, and SPARQL endpoints.
+spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), REST APIs, and SPARQL endpoints.
 
 ## Features
 - Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, REST APIs (JSON), and SPARQL services.
-- Unity Catalog and Hive Metastore helpers to create catalogs/schemas and register external Delta tables.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
 - DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
 - Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
-- Typer-powered CLI: list connectors, preview datasets, register tables, submit Databricks jobs.
+- Typer-powered CLI: list connectors, preview datasets, register Fabric tables, and submit Databricks jobs.
 
 ## Quickstart
 ```python
@@ -54,18 +53,6 @@ sparql_df = SPARQLReader().read(
     },
 )
 sparql_df.show(5, truncate=False)
-
-from spark_fuse.catalogs import unity
-unity.create_catalog(spark, "analytics")
-unity.create_schema(spark, catalog="analytics", schema="core")
-unity.register_external_delta_table(
-    spark,
-    catalog="analytics",
-    schema="core",
-    table="events",
-    location="abfss://container@account.dfs.core.windows.net/path/to/delta",
-)
-```
 
 ### LLM-powered semantic mapping
 ```python
@@ -146,9 +133,6 @@ The new guide in `docs/similarity_partitioning_demo.md` walks through the workfl
 ## CLI
 - `spark-fuse connectors`
 - `spark-fuse read --path <uri> --show 5`
-- `spark-fuse uc-create --catalog <name> --schema <name>`
-- `spark-fuse uc-register-table --catalog <c> --schema <s> --table <t> --path <uri>`
-- `spark-fuse hive-register-external --database <db> --table <t> --path <uri>`
 - `spark-fuse fabric-register --table <t> --path <onelake-or-abfss-on-onelake>`
 - `spark-fuse databricks-submit --json job.json`
 

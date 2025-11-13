@@ -10,17 +10,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .. import __version__
-from ..catalogs import hive, unity
 from ..io import azure_adls  # noqa: F401  # Ensure registration side-effects
 from ..io import databricks as dbr  # noqa: F401
 from ..io import fabric as fabric_io  # noqa: F401
-from ..io import qdrant as qdrant_io  # noqa: F401
 from ..io.registry import connector_for_path, list_connectors
 from ..spark import create_session
 from ..utils.logging import console
 
 
-app = typer.Typer(name="spark-fuse", help="PySpark toolkit: connectors, catalogs, CLI tools")
+app = typer.Typer(name="spark-fuse", help="PySpark toolkit: connectors and CLI tools")
 
 
 @app.callback()
@@ -61,48 +59,6 @@ def read_cmd(
     )
     df.show(show, truncate=False)
     console().print(f"Schema: {df.schema.simpleString()}")
-
-
-@app.command("uc-create")
-def uc_create_cmd(
-    catalog: str = typer.Option(..., help="Unity Catalog name"),
-    schema: Optional[str] = typer.Option(None, help="Schema to create inside the catalog"),
-):
-    """Create a Unity Catalog and optionally a schema."""
-    spark = create_session(app_name="spark-fuse-uc-create")
-    unity.create_catalog(spark, catalog)
-    if schema:
-        unity.create_schema(spark, catalog=catalog, schema=schema)
-    console().print(Panel.fit("Unity Catalog create completed", style="info"))
-
-
-@app.command("uc-register-table")
-def uc_register_table_cmd(
-    catalog: str = typer.Option(..., help="Unity Catalog name"),
-    schema: str = typer.Option(..., help="Schema name"),
-    table: str = typer.Option(..., help="Table name"),
-    path: str = typer.Option(
-        ..., help="External Delta location (abfss:// or dbfs:/ or onelake://)"
-    ),
-):
-    """Register an external Delta table in Unity Catalog."""
-    spark = create_session(app_name="spark-fuse-uc-register")
-    unity.register_external_delta_table(
-        spark, catalog=catalog, schema=schema, table=table, location=path
-    )
-    console().print(Panel.fit("Unity Catalog registration completed", style="info"))
-
-
-@app.command("hive-register-external")
-def hive_register_external_cmd(
-    database: str = typer.Option(..., help="Hive database name"),
-    table: str = typer.Option(..., help="Table name"),
-    path: str = typer.Option(..., help="External Delta location"),
-):
-    """Register an external Delta table in Hive Metastore."""
-    spark = create_session(app_name="spark-fuse-hive-register")
-    hive.register_external_delta_table(spark, database=database, table=table, location=path)
-    console().print(Panel.fit("Hive registration completed", style="info"))
 
 
 @app.command("fabric-register")

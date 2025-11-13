@@ -32,9 +32,6 @@ body:
         - label: Connectors — ADLS Gen2
         - label: Connectors — Microsoft Fabric (OneLake)
         - label: Connectors — Databricks / DBFS / Jobs
-        - label: Connectors — Qdrant (vectors)
-        - label: Catalogs — Unity Catalog
-        - label: Catalogs — Hive Metastore
         - label: Spark helpers
         - label: CLI
         - label: Utils / SCD2
