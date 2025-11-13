@@ -13,6 +13,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - `split_by_date_formats` now relies on `try_to_timestamp` when available so PySpark 4 no longer raises
   ANSI parsing errors for invalid rows; unmatched rows are still surfaced per the chosen mode.
 
+### Removed
+- Deprecated catalog helpers (Unity/Hive) and their CLI commands, documentation, and tests.
+- Dropped the experimental Qdrant connector stub and the optional `qdrant` dependency extra.
+
 ### Documentation
 - Updated install/prerequisite docs and demos to reference PySpark 4 and current Java requirements.
 

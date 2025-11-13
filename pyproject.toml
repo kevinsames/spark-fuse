@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "spark-fuse"
 version = "0.4.0"
-description = "Open-source PySpark toolkit with connectors and CLI for Azure Storage, Databricks, Microsoft Fabric Lakehouses, Unity Catalog, and Hive Metastore."
+description = "Open-source PySpark toolkit with connectors and CLI for Azure Storage, Databricks, Microsoft Fabric Lakehouses, REST APIs, and SPARQL endpoints."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
@@ -50,9 +50,6 @@ dev = [
   "pre-commit>=3",
   "build>=1",
   "twine>=5",
-]
-qdrant = [
-  "qdrant-client>=1.8",
 ]
 
 [project.scripts]

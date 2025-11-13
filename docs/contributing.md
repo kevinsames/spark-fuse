@@ -28,7 +28,6 @@ Thank you for your interest in contributing! This guide covers the local dev set
 - Package: `src/spark_fuse/...`
 - CLI entrypoint: `src/spark_fuse/tools/cli.py` (`spark-fuse`)
 - Connectors: `src/spark_fuse/io/`
-- Catalog helpers: `src/spark_fuse/catalogs/`
 - Spark helpers: `src/spark_fuse/spark.py`
 - Tests: `tests/`
 
@@ -48,11 +47,6 @@ Thank you for your interest in contributing! This guide covers the local dev set
 3. Register with `@register_connector` decorator.
 4. Add tests in `tests/io/` (path validation and basic behavior).
 5. Optionally wire a CLI command in `tools/cli.py`.
-
-## Catalog Utilities
-- Unity Catalog helpers live in `catalogs/unity.py`.
-- Hive Metastore helpers live in `catalogs/hive.py`.
-- Prefer building SQL with minimal quoting helpers; add unit tests for generated SQL in `tests/catalogs/`.
 
 ## CLI Commands
 - Implement Typer commands in `tools/cli.py`.

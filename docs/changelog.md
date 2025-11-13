@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
+### Changed
+- Require PySpark 4.x (and delta-spark 4.x) in the Python package metadata and auto-detect the Scala
+  binary when configuring Delta Lake jars, with an escape hatch via `SPARK_FUSE_DELTA_SCALA_SUFFIX`.
+
+### Fixed
+- `split_by_date_formats` now relies on `try_to_timestamp` when available so PySpark 4 no longer raises
+  ANSI parsing errors for invalid rows; unmatched rows are still surfaced per the chosen mode.
+
+### Removed
+- Deprecated catalog helpers (Unity/Hive) and their CLI commands, documentation, and tests.
+- Dropped the experimental Qdrant connector stub and the optional `qdrant` dependency extra.
+
+### Documentation
+- Updated install/prerequisite docs and demos to reference PySpark 4 and current Java requirements.
 
 ## [0.4.0] - 2025-11-15
 ### Added
