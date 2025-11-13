@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
+- _No changes yet._
+
+## [1.0.0] - 2025-11-16
 ### Changed
 - Require PySpark 4.x (and delta-spark 4.x) in the Python package metadata and auto-detect the Scala
   binary when configuring Delta Lake jars, with an escape hatch via `SPARK_FUSE_DELTA_SCALA_SUFFIX`.
@@ -155,7 +158,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/kevinsames/spark-fuse/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/kevinsames/spark-fuse/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...v0.3.2
 [0.3.0]: https://github.com/kevinsames/spark-fuse/compare/v0.2.1...v0.3.0
