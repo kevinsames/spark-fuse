@@ -4,7 +4,7 @@ This guide introduces the similarity pipeline primitives included with `spark-fu
 
 ## Prerequisites
 
-- PySpark 3.4+ with access to the `spark-fuse` package (version 0.4.0 or newer).
+- PySpark 4.0+ with access to the `spark-fuse` package (version 0.4.0 or newer).
 - The demo snippet below runs locally; adapt the Spark session to match your cluster configuration when deploying.
 - Sample descriptions are embedded on the fly for brevity. In production, feed vectors produced by your preferred embedding workflow or swap in a different generator.
 

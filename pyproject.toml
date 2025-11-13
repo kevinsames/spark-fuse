@@ -23,8 +23,8 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "pyspark>=3.4,<4",
-  "delta-spark>=3,<4",
+  "pyspark>=4,<5",
+  "delta-spark>=4,<5",
   "adlfs>=2023.4",
   "azure-identity>=1.14",
   "typer>=0.9",

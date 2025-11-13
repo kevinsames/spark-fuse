@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from typing import Dict, Optional
 
 from pyspark.sql import SparkSession
@@ -10,13 +11,35 @@ from pyspark.sql import SparkSession
 # - PySpark 3.3 → delta-spark 2.3.x
 # - PySpark 3.4 → delta-spark 2.4.x
 # - PySpark 3.5 → delta-spark 3.2.x
+# - PySpark 4.0 → delta-spark 4.0.x
 # You can override the choice with the environment variable
-# SPARK_FUSE_DELTA_VERSION if you need a specific version.
+# SPARK_FUSE_DELTA_VERSION if you need a specific version, and
+# SPARK_FUSE_DELTA_SCALA_SUFFIX to force a Scala binary (e.g., 2.13).
 DELTA_PYSPARK_COMPAT: Dict[str, str] = {
     "3.3": "2.3.0",
     "3.4": "2.4.0",
     "3.5": "3.2.0",
+    "4.0": "4.0.0",
 }
+DEFAULT_DELTA_VERSION = "4.0.0"
+LEGACY_DELTA_VERSION = "3.2.0"
+DEFAULT_SCALA_SUFFIX = "2.13"
+LEGACY_SCALA_SUFFIX = "2.12"
+
+
+def _detect_scala_binary(pyspark_module) -> Optional[str]:
+    """Best-effort Scala binary detection based on bundled jars."""
+
+    try:
+        jars_dir = Path(pyspark_module.__file__).resolve().parent / "jars"
+        matches = sorted(jars_dir.glob("scala-library-*.jar"))
+        if not matches:
+            return None
+        version = matches[0].name.split("scala-library-")[-1].split(".jar")[0]
+        major_minor = version.split(".")[:2]
+        return ".".join(major_minor)
+    except Exception:
+        return None
 
 
 def detect_environment() -> str:
@@ -35,8 +58,8 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
     """Attach Delta configs and add a compatible Delta Lake package.
 
     Uses a simple compatibility map between PySpark and delta-spark to avoid
-    runtime class mismatches. An override can be provided via the environment
-    variable `SPARK_FUSE_DELTA_VERSION`.
+    runtime class mismatches. Overrides can be provided via the environment
+    variables `SPARK_FUSE_DELTA_VERSION` and `SPARK_FUSE_DELTA_SCALA_SUFFIX`.
     """
     builder = builder.config(
         "spark.sql.extensions",
@@ -48,20 +71,39 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
 
     # Choose a delta-spark version compatible with the local PySpark runtime.
     delta_ver = os.environ.get("SPARK_FUSE_DELTA_VERSION")
-    if not delta_ver:
+    scala_suffix = os.environ.get("SPARK_FUSE_DELTA_SCALA_SUFFIX")
+    if not (delta_ver and scala_suffix):
         try:
             import pyspark  # type: ignore
 
             ver = pyspark.__version__
             major, minor, *_ = ver.split(".")
             key = f"{major}.{minor}"
-            delta_ver = DELTA_PYSPARK_COMPAT.get(key, "3.2.0")
+            try:
+                major_int = int(major)
+            except ValueError:
+                major_int = 4
+
+            modern_runtime = major_int >= 4
+            default_delta = DEFAULT_DELTA_VERSION if modern_runtime else LEGACY_DELTA_VERSION
+            default_scala = DEFAULT_SCALA_SUFFIX if modern_runtime else LEGACY_SCALA_SUFFIX
+
+            if not delta_ver:
+                delta_ver = DELTA_PYSPARK_COMPAT.get(key, default_delta)
+
+            if not scala_suffix:
+                detected_scala = _detect_scala_binary(pyspark)
+                scala_suffix = detected_scala or default_scala
         except Exception:
             # Fallback that works for recent Spark
-            delta_ver = "3.2.0"
+            delta_ver = delta_ver or DEFAULT_DELTA_VERSION
+            scala_suffix = scala_suffix or DEFAULT_SCALA_SUFFIX
 
-    # Append io.delta package; assume Scala 2.12 for Spark 3.x
-    pkg = f"io.delta:delta-spark_2.12:{delta_ver}"
+    delta_ver = delta_ver or DEFAULT_DELTA_VERSION
+    scala_suffix = scala_suffix or DEFAULT_SCALA_SUFFIX
+
+    # Append io.delta package, matching the Scala binary for the detected Spark runtime.
+    pkg = f"io.delta:delta-spark_{scala_suffix}:{delta_ver}"
     builder = builder.config(
         "spark.jars.packages",
         pkg

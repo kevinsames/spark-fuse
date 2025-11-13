@@ -218,7 +218,15 @@ def split_by_date_formats(
     if mode == "default" and default_value is None:
         raise ValueError("default_value must be provided when handle_errors='default'")
 
-    parsed_expressions = [F.to_date(F.col(column), fmt) for fmt in format_list]
+    def _parsed_date_expr(fmt: str):
+        """Return a date column that tolerates parse errors when possible."""
+
+        if hasattr(F, "try_to_timestamp"):
+            # `try_to_timestamp` expects the format as a column/literal, not a Python string.
+            return F.to_date(F.try_to_timestamp(F.col(column), F.lit(fmt)))
+        return F.to_date(F.col(column), fmt)
+
+    parsed_expressions = [_parsed_date_expr(fmt) for fmt in format_list]
     if len(parsed_expressions) == 1:
         parsed_expr = parsed_expressions[0]
     else:

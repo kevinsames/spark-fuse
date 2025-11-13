@@ -3,7 +3,7 @@ spark-fuse — Install Guide
 
 Prerequisites
 - Python: 3.9+
-- Java: JDK 8 or 11 (required by PySpark 3.4.x)
+- Java: JDK 11 or 17 (required by PySpark 4.x)
 - OS packages: build tools to compile native deps if needed
 
 Virtual Environment (recommended)
@@ -28,9 +28,9 @@ Verify Installation
 - `spark-fuse --help`
 
 Java Setup Notes
-- macOS (Homebrew): `brew install openjdk@11` then add to your shell:
-  - `export JAVA_HOME="$(/usr/libexec/java_home -v 11)"`
-- Linux: install OpenJDK 11 using your distro’s package manager and set `JAVA_HOME` accordingly.
+- macOS (Homebrew): `brew install openjdk@17` then add to your shell:
+  - `export JAVA_HOME="$(/usr/libexec/java_home -v 17)"`
+- Linux: install OpenJDK 17 (or 11 at minimum) using your distro’s package manager and set `JAVA_HOME` accordingly.
 
 Optional: Authentication and Environment
 - Azure ADLS Gen2 (abfss://): set environment variables for a Service Principal and pass Spark configs as needed.
