@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from enum import Enum
 from typing import Iterable, Optional, Sequence, Union
 
@@ -44,11 +45,39 @@ def _delta_table(spark: SparkSession, target: str) -> DeltaTable:
         return DeltaTable.forName(spark, target)
 
 
-def _write_append(df: DataFrame, target: str) -> None:
+def _write_append(df: DataFrame, target: str, *, merge_schema: bool = False) -> None:
+    writer = df.write.format("delta").mode("append")
+    if merge_schema:
+        writer = writer.option("mergeSchema", "true")
+
     if _is_delta_path(target):
-        df.write.format("delta").mode("append").save(target)
+        writer.save(target)
     else:
-        df.write.format("delta").mode("append").saveAsTable(target)
+        writer.saveAsTable(target)
+
+
+@contextmanager
+def _temporarily_enable_automerge(spark: SparkSession, enabled: bool):
+    if not enabled:
+        yield
+        return
+
+    key = "spark.databricks.delta.schema.autoMerge.enabled"
+    had_prev = True
+    try:
+        prev_value = spark.conf.get(key)
+    except Exception:
+        had_prev = False
+        prev_value = None
+
+    spark.conf.set(key, "true")
+    try:
+        yield
+    finally:
+        if had_prev:
+            spark.conf.set(key, prev_value)
+        else:
+            spark.conf.unset(key)
 
 
 def _coalesce_cast_to_string(col: F.Column) -> F.Column:
@@ -72,6 +101,7 @@ def _scd2_process_batch(
     cond_keys_sql: str,
     create_if_not_exists: bool,
     target_exists: bool,
+    allow_schema_evolution: bool,
 ) -> bool:
     """Apply SCD2 semantics for a batch that has at most one row per business key."""
 
@@ -84,7 +114,7 @@ def _scd2_process_batch(
             .withColumn(current_col, F.lit(True))
             .withColumn(version_col, F.lit(1).cast("bigint"))
         )
-        _write_append(initial, target)
+        _write_append(initial, target, merge_schema=allow_schema_evolution)
         return True
 
     target_dt = _delta_table(spark, target)
@@ -144,7 +174,7 @@ def _scd2_process_batch(
         .drop("__prev_version")
     )
 
-    _write_append(to_insert, target)
+    _write_append(to_insert, target, merge_schema=allow_schema_evolution)
     return True
 
 
@@ -160,6 +190,7 @@ def scd1_upsert(
     hash_col: str = "row_hash",
     null_key_policy: str = "error",  # "error" | "drop"
     create_if_not_exists: bool = True,
+    allow_schema_evolution: bool = False,
 ) -> None:
     """Perform SCD Type 1 upsert (no history): keep exactly one current row per business key.
 
@@ -167,6 +198,8 @@ def scd1_upsert(
       - De-duplicate input on `dedupe_keys` (default business_keys) using `order_by` to keep latest.
       - Compute a stable `row_hash` over tracked columns.
       - MERGE into target: update when hash differs, insert when not matched.
+      - When ``allow_schema_evolution`` is ``True``, Delta's auto-merge option is enabled so any new
+        columns present in ``source_df`` are automatically added to the target table.
     """
 
     if not business_keys:
@@ -230,7 +263,7 @@ def scd1_upsert(
     if not target_exists:
         if not create_if_not_exists:
             raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
-        _write_append(src_hashed, target)
+        _write_append(src_hashed, target, merge_schema=allow_schema_evolution)
         return
 
     # MERGE: update when changed, insert when new
@@ -256,19 +289,20 @@ def scd1_upsert(
     set_map = {c: F.col(f"s.`{c}`") for c in write_cols}
     insert_map = {c: F.col(f"s.`{c}`") for c in write_cols}
 
-    (
-        dt.alias("t")
-        .merge(
-            src_hashed.alias("s"),
-            cond_keys_sql,
+    with _temporarily_enable_automerge(spark, allow_schema_evolution):
+        (
+            dt.alias("t")
+            .merge(
+                src_hashed.alias("s"),
+                cond_keys_sql,
+            )
+            .whenMatchedUpdate(
+                condition=F.expr(change_cond_sql),
+                set=set_map,
+            )
+            .whenNotMatchedInsert(values=insert_map)
+            .execute()
         )
-        .whenMatchedUpdate(
-            condition=F.expr(change_cond_sql),
-            set=set_map,
-        )
-        .whenNotMatchedInsert(values=insert_map)
-        .execute()
-    )
 
 
 def scd2_upsert(
@@ -288,6 +322,7 @@ def scd2_upsert(
     load_ts_expr: Optional[Union[str, F.Column]] = None,
     null_key_policy: str = "error",  # "error" | "drop"
     create_if_not_exists: bool = True,
+    allow_schema_evolution: bool = False,
 ) -> None:
     """Perform SCD Type 2 upsert into a Delta table (Unity Catalog table name or Delta path).
 
@@ -319,6 +354,9 @@ def scd2_upsert(
         null_key_policy: Policy for null business keys in ``source_df``. Either ``"error"`` (default)
             or ``"drop"``.
         create_if_not_exists: When ``True`` (default), create the target table if it does not exist.
+        allow_schema_evolution: When ``True``, append operations use Delta schema evolution so new
+            columns added to the source DataFrame are automatically added to the target table. Only
+            affects write paths (initial bootstrap + inserts).
     """
 
     if not business_keys:
@@ -424,6 +462,7 @@ def scd2_upsert(
             cond_keys_sql=cond_keys_sql,
             create_if_not_exists=create_flag,
             target_exists=target_exists,
+            allow_schema_evolution=allow_schema_evolution,
         )
         create_flag = False
 
