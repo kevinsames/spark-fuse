@@ -85,11 +85,13 @@ def test_scd2_upsert_versioning(spark, tmp_path: Path):
     )
 
     out1 = spark.read.format("delta").load(target)
+    assert out1.filter("id = 1").count() == 2  # history retained within a single batch
     assert out1.filter("is_current = true").count() == 2
     rows1 = _rows_by_key(out1.filter("is_current = true"), "id")
-    assert rows1[1]["version"] == 1
+    assert rows1[1]["version"] == 2
     assert rows1[2]["version"] == 1
     assert rows1[1]["val"] == "b"
+    assert out1.filter("id = 1 and is_current = false").count() == 1
 
     # Second batch: change id=1, add id=3; bump load timestamp
     df2 = spark.createDataFrame(
@@ -110,16 +112,45 @@ def test_scd2_upsert_versioning(spark, tmp_path: Path):
     )
 
     out2 = spark.read.format("delta").load(target)
-    # Expect: id=1 has two versions, id=2 has one, id=3 has one. Three currents total.
+    # Expect: id=1 has three versions (two closed, one current); id=2 has one, id=3 has one. Three currents total.
     assert out2.filter("is_current = true").count() == 3
     current = _rows_by_key(out2.filter("is_current = true"), "id")
-    assert current[1]["version"] == 2
+    assert current[1]["version"] == 3
     assert current[1]["val"] == "c"
-    # Closed row for id=1 exists with non-null expiry
+    # Closed rows for id=1 exist with non-null expiry
     closed_count = out2.filter(
         "id = 1 and is_current = false and effective_end_ts is not null"
     ).count()
-    assert closed_count == 1
+    assert closed_count == 2
+
+
+def test_scd2_upsert_multiple_versions_same_batch(spark, tmp_path: Path):
+    target = str(tmp_path / "scd2_multi_batch")
+
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},
+            {"id": 1, "val": "b", "ts": 2},
+            {"id": 1, "val": "c", "ts": 3},
+        ]
+    )
+
+    scd2_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    out = spark.read.format("delta").load(target)
+    assert out.filter("id = 1").count() == 3
+    assert out.filter("id = 1 and is_current = true").count() == 1
+    versions = out.where("id = 1").orderBy("version").collect()
+    assert [row.version for row in versions] == [1, 2, 3]
+    assert versions[-1].val == "c"
 
 
 def test_apply_scd_dispatch(spark, tmp_path: Path):

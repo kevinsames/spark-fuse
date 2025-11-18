@@ -7,6 +7,19 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [Unreleased]
 - _No changes yet._
 
+## [1.0.1] - 2025-11-18
+### Added
+- Unit coverage for `scd2_upsert` scenarios where multiple changes for a key arrive in the same
+  batch, plus a corresponding example in the demo notebook to visualize the full history.
+
+### Changed
+- `scd2_upsert` now sequences duplicate business keys within a batch so each intermediate state is
+  written with its own version rather than only keeping the latest row from the source feed.
+
+### Documentation
+- Noted the intra-batch sequencing behavior in the SCD documentation/demo so teams know that the
+  helper preserves every version even when the upstream dataset is not pre-collapsed.
+
 ## [1.0.0] - 2025-11-16
 ### Changed
 - Require PySpark 4.x (and delta-spark 4.x) in the Python package metadata and auto-detect the Scala
@@ -103,7 +116,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/kevinsames/spark-fuse/compare/v0.3.2...v1.0.0
 [0.3.2]: https://github.com/kevinsames/spark-fuse/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/kevinsames/spark-fuse/compare/v0.3.0...v0.3.1

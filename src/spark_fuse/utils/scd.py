@@ -17,6 +17,7 @@ __all__ = [
 
 # Delimiter used for stable row-hash concatenation (Unit Separator)
 UNIT_SEPARATOR = "\u241f"
+SCD_SEQUENCE_COL = "__scd_seq"
 
 
 class SCDMode(str, Enum):
@@ -53,6 +54,98 @@ def _write_append(df: DataFrame, target: str) -> None:
 def _coalesce_cast_to_string(col: F.Column) -> F.Column:
     # Normalize None/Null -> empty string to ensure stable hashing; cast complex to string deterministically
     return F.coalesce(col.cast("string"), F.lit(""))
+
+
+def _scd2_process_batch(
+    spark: SparkSession,
+    source_batch: DataFrame,
+    target: str,
+    *,
+    business_keys: Sequence[str],
+    tracked_columns: Sequence[str],
+    effective_col: str,
+    expiry_col: str,
+    current_col: str,
+    version_col: str,
+    hash_col: str,
+    ts_col: F.Column,
+    cond_keys_sql: str,
+    create_if_not_exists: bool,
+    target_exists: bool,
+) -> bool:
+    """Apply SCD2 semantics for a batch that has at most one row per business key."""
+
+    if not target_exists:
+        if not create_if_not_exists:
+            raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
+        initial = (
+            source_batch.withColumn(effective_col, ts_col)
+            .withColumn(expiry_col, F.lit(None).cast("timestamp"))
+            .withColumn(current_col, F.lit(True))
+            .withColumn(version_col, F.lit(1).cast("bigint"))
+        )
+        _write_append(initial, target)
+        return True
+
+    target_dt = _delta_table(spark, target)
+    target_cols = set(_read_target_df(spark, target).columns)
+
+    if hash_col in target_cols:
+        change_cond_sql = f"NOT (t.`{hash_col}` <=> s.`{hash_col}`)"
+    else:
+        change_cond_sql = (
+            " OR ".join([f"NOT (t.`{c}` <=> s.`{c}`)" for c in tracked_columns]) or "false"
+        )
+
+    (
+        target_dt.alias("t")
+        .merge(
+            source_batch.alias("s"),
+            f"({cond_keys_sql}) AND t.`{current_col}` = true",
+        )
+        .whenMatchedUpdate(
+            condition=F.expr(change_cond_sql),
+            set={
+                expiry_col: ts_col,
+                current_col: F.lit(False),
+            },
+        )
+        .execute()
+    )
+
+    tgt_current = (
+        _read_target_df(spark, target)
+        .where(F.col(current_col) == F.lit(True))
+        .select(*business_keys)
+    )
+
+    s = source_batch.alias("s")
+    tcur = tgt_current.alias("tcur")
+    join_cond = [s[k] == tcur[k] for k in business_keys]
+    joined = s.join(tcur, on=join_cond, how="left")
+    is_new_or_changed = tcur[business_keys[0]].isNull()
+    rows_to_insert = joined.where(is_new_or_changed).select([s[c] for c in source_batch.columns])
+
+    tgt_max_ver = (
+        _read_target_df(spark, target)
+        .groupBy(*business_keys)
+        .agg(F.max(F.col(version_col)).alias("__prev_version"))
+    )
+
+    rows_with_prev = rows_to_insert.join(tgt_max_ver, on=list(business_keys), how="left")
+
+    to_insert = (
+        rows_with_prev.withColumn(effective_col, ts_col)
+        .withColumn(expiry_col, F.lit(None).cast("timestamp"))
+        .withColumn(current_col, F.lit(True))
+        .withColumn(
+            version_col, F.coalesce(F.col("__prev_version"), F.lit(0)).cast("bigint") + F.lit(1)
+        )
+        .drop("__prev_version")
+    )
+
+    _write_append(to_insert, target)
+    return True
 
 
 def scd1_upsert(
@@ -261,7 +354,7 @@ def scd2_upsert(
     else:
         raise ValueError("null_key_policy must be 'error' or 'drop'")
 
-    # De-duplicate incoming data (keep latest by order_by if provided)
+    # Partition incoming data by dedupe_keys so we can process one row per key in each pass.
     if dedupe_keys is None:
         dedupe_keys = list(business_keys)
 
@@ -269,13 +362,11 @@ def scd2_upsert(
         w = Window.partitionBy(*[F.col(k) for k in dedupe_keys]).orderBy(
             *[F.col(c).desc_nulls_last() for c in order_by]
         )
-        source_df = (
-            source_df.withColumn("__rn", F.row_number().over(w))
-            .where(F.col("__rn") == 1)
-            .drop("__rn")
-        )
+        source_df = source_df.withColumn(SCD_SEQUENCE_COL, F.row_number().over(w))
     else:
-        source_df = source_df.dropDuplicates(list(dedupe_keys))
+        source_df = source_df.dropDuplicates(list(dedupe_keys)).withColumn(
+            SCD_SEQUENCE_COL, F.lit(1)
+        )
 
     # Compute deterministic row hash over tracked columns
     hash_expr_inputs = [_coalesce_cast_to_string(F.col(c)) for c in tracked_columns]
@@ -292,6 +383,8 @@ def scd2_upsert(
     else:
         ts_col = load_ts_expr
 
+    # Determine merge condition and columns used for writing.
+    cond_keys_sql = " AND ".join([f"t.`{k}` <=> s.`{k}`" for k in business_keys])
     # Does target exist?
     target_exists = True
     try:
@@ -299,93 +392,43 @@ def scd2_upsert(
     except Exception:
         target_exists = False
 
-    # Bootstrap if target missing
-    if not target_exists:
-        if not create_if_not_exists:
-            raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
-        initial = (
-            source_hashed.withColumn(effective_col, ts_col)
-            .withColumn(expiry_col, F.lit(None).cast("timestamp"))
-            .withColumn(current_col, F.lit(True))
-            .withColumn(version_col, F.lit(1).cast("bigint"))
-        )
-        _write_append(initial, target)
+    # Split into per-rank batches (rank 1 == latest). Process from oldest -> newest.
+    should_cache = bool(order_by)
+    if should_cache:
+        source_hashed = source_hashed.cache()
+
+    max_seq_val = source_hashed.agg(F.max(F.col(SCD_SEQUENCE_COL)).alias("__max_seq")).collect()[0][
+        "__max_seq"
+    ]
+
+    if max_seq_val is None:
+        if should_cache:
+            source_hashed.unpersist()
         return
 
-    # 1) Close changed current rows (null-safe hash compare)
-    target_dt = _delta_table(spark, target)
-
-    # Build ON condition for keys + current flag
-    cond_keys_sql = " AND ".join([f"t.`{k}` <=> s.`{k}`" for k in business_keys])
-
-    # If target doesn't store hash already, compute it on the fly in the WHEN condition by hashing t.* tracked columns
-    # but Delta MERGE API does not let us reference computed columns from target easily; instead rely on comparing stored hash if present.
-    # We will support both: if target has `hash_col` use it; otherwise compute equality across tracked columns.
-
-    target_cols = set(_read_target_df(spark, target).columns)
-    if hash_col in target_cols:
-        change_cond_sql = f"NOT (t.`{hash_col}` <=> s.`{hash_col}`)"
-    else:
-        # fallback: compare each tracked column with null-safe equality
-        change_cond_sql = (
-            " OR ".join([f"NOT (t.`{c}` <=> s.`{c}`)" for c in tracked_columns]) or "false"
+    create_flag = create_if_not_exists
+    for seq in range(int(max_seq_val), 0, -1):
+        batch = source_hashed.where(F.col(SCD_SEQUENCE_COL) == seq).drop(SCD_SEQUENCE_COL)
+        target_exists = _scd2_process_batch(
+            spark,
+            batch,
+            target,
+            business_keys=business_keys,
+            tracked_columns=tracked_columns,
+            effective_col=effective_col,
+            expiry_col=expiry_col,
+            current_col=current_col,
+            version_col=version_col,
+            hash_col=hash_col,
+            ts_col=ts_col,
+            cond_keys_sql=cond_keys_sql,
+            create_if_not_exists=create_flag,
+            target_exists=target_exists,
         )
+        create_flag = False
 
-    (
-        target_dt.alias("t")
-        .merge(
-            source_hashed.alias("s"),
-            f"({cond_keys_sql}) AND t.`{current_col}` = true",
-        )
-        .whenMatchedUpdate(
-            condition=F.expr(change_cond_sql),
-            set={
-                expiry_col: ts_col,
-                current_col: F.lit(False),
-            },
-        )
-        .execute()
-    )
-
-    # 2) Insert new current rows for new or changed keys (with incremented version)
-    tgt_current = (
-        _read_target_df(spark, target)
-        .where(F.col(current_col) == F.lit(True))
-        .select(*business_keys)
-    )
-
-    s = source_hashed.alias("s")
-    tcur = tgt_current.alias("tcur")
-    join_cond = [s[k] == tcur[k] for k in business_keys]
-    joined = s.join(tcur, on=join_cond, how="left")
-
-    # Determine which rows need insertion: new keys (no current row matches) OR changed (step 1 closed current row)
-    is_new_or_changed = tcur[business_keys[0]].isNull()
-
-    # If a key existed and did not change, there will still be a current row present; exclude those.
-    rows_to_insert = joined.where(is_new_or_changed).select([s[c] for c in source_hashed.columns])
-
-    # Join with max version per key from target history to increment correctly for changed keys
-    tgt_max_ver = (
-        _read_target_df(spark, target)
-        .groupBy(*business_keys)
-        .agg(F.max(F.col(version_col)).alias("__prev_version"))
-    )
-
-    rows_with_prev = rows_to_insert.join(tgt_max_ver, on=list(business_keys), how="left")
-
-    # Compute next version per key: coalesce(prev_version, 0) + 1
-    to_insert = (
-        rows_with_prev.withColumn(effective_col, ts_col)
-        .withColumn(expiry_col, F.lit(None).cast("timestamp"))
-        .withColumn(current_col, F.lit(True))
-        .withColumn(
-            version_col, F.coalesce(F.col("__prev_version"), F.lit(0)).cast("bigint") + F.lit(1)
-        )
-        .drop("__prev_version")
-    )
-
-    _write_append(to_insert, target)
+    if should_cache:
+        source_hashed.unpersist()
 
 
 def apply_scd(
