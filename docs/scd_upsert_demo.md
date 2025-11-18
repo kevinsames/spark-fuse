@@ -44,7 +44,7 @@ scd1_upsert(
 
 ## SCD Type 2
 
-SCD2 tracks history by closing current rows (setting expiry timestamp, `is_current=false`) and inserting new versions.
+SCD2 tracks history by closing current rows (setting expiry timestamp, `is_current=false`) and inserting new versions. When a batch contains multiple records for the same business key, the helper processes them in chronological order so every change within the batch is preserved.
 
 ```python
 target_path = "/tmp/scd2_demo"
