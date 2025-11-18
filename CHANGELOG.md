@@ -11,6 +11,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Added
 - Unit coverage for `scd2_upsert` scenarios where multiple changes for a key arrive in the same
   batch, plus a corresponding example in the demo notebook to visualize the full history.
+- Optional `allow_schema_evolution` flag on both `scd1_upsert` and `scd2_upsert` to let Delta
+  automatically add new columns when the incoming dataset evolves.
 
 ### Changed
 - `scd2_upsert` now sequences duplicate business keys within a batch so each intermediate state is

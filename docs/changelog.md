@@ -11,6 +11,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Added
 - Extended test coverage for `scd2_upsert` batches containing multiple updates per key and a demo
   notebook example that highlights the resulting historical versions.
+- Both `scd1_upsert` and `scd2_upsert` now accept `allow_schema_evolution=True` to automatically add
+  new columns when the upstream dataset evolves.
 
 ### Changed
 - `scd2_upsert` sequences duplicate business keys within a single batch to ensure every change is

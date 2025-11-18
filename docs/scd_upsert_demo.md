@@ -42,6 +42,20 @@ scd1_upsert(
 )
 ```
 
+If future batches introduce new attributes, allow Delta to evolve the schema automatically:
+
+```python
+scd1_upsert(
+    spark,
+    spark.createDataFrame([Row(id=1, val="d", color="blue", ts=4)]),
+    target_path,
+    business_keys=["id"],
+    tracked_columns=["val", "color"],
+    order_by=["ts"],
+    allow_schema_evolution=True,
+)
+```
+
 ## SCD Type 2
 
 SCD2 tracks history by closing current rows (setting expiry timestamp, `is_current=false`) and inserting new versions. When a batch contains multiple records for the same business key, the helper processes them in chronological order so every change within the batch is preserved.
@@ -72,6 +86,22 @@ scd2_upsert(
     tracked_columns=["val"],
     order_by=["ts"],
     load_ts_expr="to_timestamp('2024-01-02 00:00:00')",
+)
+```
+
+When new attributes arrive later, enable schema evolution so the target table automatically picks up
+the additional columns:
+
+```python
+scd2_upsert(
+    spark,
+    spark.createDataFrame([Row(id=1, val="d", color="blue", ts=4)]),
+    target_path,
+    business_keys=["id"],
+    tracked_columns=["val", "color"],
+    order_by=["ts"],
+    load_ts_expr="current_timestamp()",
+    allow_schema_evolution=True,
 )
 ```
 

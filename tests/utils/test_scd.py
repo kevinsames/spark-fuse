@@ -153,6 +153,89 @@ def test_scd2_upsert_multiple_versions_same_batch(spark, tmp_path: Path):
     assert versions[-1].val == "c"
 
 
+def test_scd2_upsert_schema_evolution(spark, tmp_path: Path):
+    target = str(tmp_path / "scd2_schema_evolution")
+
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},
+        ]
+    )
+
+    scd2_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    df_with_new_col = spark.createDataFrame(
+        [
+            {"id": 1, "val": "b", "color": "red", "ts": 2},
+        ]
+    )
+
+    scd2_upsert(
+        spark,
+        df_with_new_col,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val", "color"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-02 00:00:00')",
+        allow_schema_evolution=True,
+    )
+
+    out = spark.read.format("delta").load(target)
+    assert "color" in out.columns
+    current = out.where("is_current = true").collect()[0]
+    assert current["color"] == "red"
+    previous = out.where("version = 1").collect()[0]
+    assert previous["color"] is None
+
+
+def test_scd1_upsert_schema_evolution(spark, tmp_path: Path):
+    target = str(tmp_path / "scd1_schema_evolution")
+
+    base = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a"},
+        ]
+    )
+
+    scd1_upsert(
+        spark,
+        base,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        allow_schema_evolution=True,
+    )
+
+    updates = spark.createDataFrame(
+        [
+            {"id": 1, "val": "b", "color": "red"},
+        ]
+    )
+
+    scd1_upsert(
+        spark,
+        updates,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val", "color"],
+        allow_schema_evolution=True,
+    )
+
+    out = spark.read.format("delta").load(target)
+    assert "color" in out.columns
+    rows = _rows_by_key(out, "id")
+    assert rows[1]["color"] == "red"
+
+
 def test_apply_scd_dispatch(spark, tmp_path: Path):
     # SCD1 via dispatcher
     target1 = str(tmp_path / "apply_scd_scd1")
