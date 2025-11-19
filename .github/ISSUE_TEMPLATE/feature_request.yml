@@ -29,9 +29,8 @@ body:
     attributes:
       label: Affected areas
       options:
-        - label: Connectors — ADLS Gen2
-        - label: Connectors — Microsoft Fabric (OneLake)
-        - label: Connectors — Databricks / DBFS / Jobs
+        - label: Connectors — REST API
+        - label: Connectors — SPARQL
         - label: Spark helpers
         - label: CLI
         - label: Utils / SCD2

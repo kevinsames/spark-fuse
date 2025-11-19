@@ -1,5 +1,5 @@
 site_name: spark-fuse
-site_description: Open-source PySpark toolkit for Azure Storage, Databricks, Microsoft Fabric Lakehouses, REST APIs, and SPARQL endpoints.
+site_description: Open-source PySpark toolkit for REST APIs and SPARQL endpoints.
 site_url: https://kevinsames.github.io/spark-fuse/
 repo_name: kevinsames/spark-fuse
 repo_url: https://github.com/kevinsames/spark-fuse
@@ -63,9 +63,6 @@ nav:
   - API Reference:
       - spark_fuse.spark: api/spark.md
       - IO Core: api/io.md
-      - ADLS Gen2: api/io_azure_adls.md
-      - Fabric OneLake: api/io_fabric.md
-      - Databricks: api/io_databricks.md
       - REST API: api/io_rest_api.md
       - SPARQL: api/io_sparql.md
       - Utils — DataFrame: api/utils_dataframe.md

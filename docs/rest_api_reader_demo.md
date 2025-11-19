@@ -1,15 +1,21 @@
-# REST API Reader Demo
+# REST API Data Source Demo
 
-The REST API connector ingests paginated JSON endpoints into Spark DataFrames with optional request throttling and retry support.
+The REST API data source ingests paginated JSON endpoints into Spark DataFrames with optional request throttling and retry support.
 
 ```python
+import json
 from spark_fuse.spark import create_session
-from spark_fuse.io.rest_api import RestAPIReader
+from spark_fuse.io import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    build_rest_api_config,
+    register_rest_data_source,
+)
 
 spark = create_session(app_name="spark-fuse-rest-demo")
+register_rest_data_source(spark)
 
-reader = RestAPIReader()
-pokemon = reader.read(
+payload = build_rest_api_config(
     spark,
     "https://pokeapi.co/api/v2/pokemon",
     source_config={
@@ -17,6 +23,12 @@ pokemon = reader.read(
         "records_field": "results",
         "pagination": {"mode": "response", "field": "next", "max_pages": 2},
     },
+)
+
+pokemon = (
+    spark.read.format(REST_API_FORMAT)
+    .option(REST_API_CONFIG_OPTION, json.dumps(payload))
+    .load()
 )
 
 pokemon.select("name").show(5)
@@ -32,6 +44,6 @@ Highlights:
 
 ## Notebook walkthrough
 
-See the connector in action with additional configuration examples:
+See the data source in action with additional configuration examples:
 
-- [REST API Reader Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/rest_api_reader_demo.ipynb)
+- [REST API Data Source Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/rest_api_reader_demo.ipynb)

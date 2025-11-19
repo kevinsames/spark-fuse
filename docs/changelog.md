@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
-- _No changes yet._
+### Removed
+- ADLS Gen2, Fabric, and Databricks connectors plus their CLI commands/documentation, focusing IO on REST and SPARQL sources.
+- `read_rest_api` and `read_sparql` helpers—use the Spark Data Source API directly with the new config builders.
+### Changed
+- CLI `datasources` command replaces `connectors`, and `spark-fuse read` now requires `--format rest|sparql` to select the desired data source.
 
 ## [1.0.1] - 2025-11-18
 ### Added

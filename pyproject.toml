@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "spark-fuse"
 version = "1.0.1"
-description = "Open-source PySpark toolkit with connectors and CLI for Azure Storage, Databricks, Microsoft Fabric Lakehouses, REST APIs, and SPARQL endpoints."
+description = "Open-source PySpark toolkit with data sources for REST APIs and SPARQL endpoints."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"

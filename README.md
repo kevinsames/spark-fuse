@@ -4,14 +4,14 @@ spark-fuse
 ![CI](https://github.com/kevinsames/spark-fuse/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
-spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), JSON-centric REST APIs, and SPARQL endpoints.
+spark-fuse is an open-source toolkit for PySpark — providing utilities, data sources, and tools to fuse your data workflows across JSON-centric REST APIs and SPARQL endpoints.
 
 Features
-- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, REST APIs (JSON), and SPARQL services.
-- SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
+- Data sources for REST APIs (JSON payloads with pagination/retry support) and SPARQL services.
+- SparkSession helpers with sensible defaults and environment detection (databricks/fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, schema checks, and ready-made date/time dimensions (daily calendar attributes and clock buckets).
 - LLM-powered semantic column normalization that batches API calls and caches responses.
-- Typer-powered CLI: list connectors, preview datasets, register Fabric tables, and submit Databricks jobs.
+- Typer-powered CLI: list data sources and preview datasets via the REST/SPARQL helpers.
 
 Installation
 - Create a virtual environment (recommended)
@@ -33,54 +33,72 @@ from spark_fuse.spark import create_session
 spark = create_session(app_name="spark-fuse-quickstart")
 ```
 
-2) Read a Delta table from ADLS or OneLake
+2) Load paginated REST API responses
 ```python
-from spark_fuse.io.azure_adls import ADLSGen2Connector
+import json
+from spark_fuse.io import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    build_rest_api_config,
+    register_rest_data_source,
+)
 
-df = ADLSGen2Connector().read(spark, "abfss://container@account.dfs.core.windows.net/path/to/delta")
-df.show(5)
-```
-
-3) Load paginated REST API responses
-```python
-from spark_fuse.io.rest_api import RestAPIReader
-
-reader = RestAPIReader()
-config = {
-    "request_type": "GET",  # switch to "POST" for endpoints that require a body
-    "records_field": "results",
-    "pagination": {"mode": "response", "field": "next", "max_pages": 2},
-    "params": {"limit": 20},
-}
-pokemon = reader.read(spark, "https://pokeapi.co/api/v2/pokemon", source_config=config)
+register_rest_data_source(spark)
+config = build_rest_api_config(
+    spark,
+    "https://pokeapi.co/api/v2/pokemon",
+    source_config={
+        "request_type": "GET",  # switch to "POST" for endpoints that require a body
+        "records_field": "results",
+        "pagination": {"mode": "response", "field": "next", "max_pages": 2},
+        "params": {"limit": 20},
+    },
+)
+pokemon = (
+    spark.read.format(REST_API_FORMAT)
+    .option(REST_API_CONFIG_OPTION, json.dumps(config))
+    .load()
+)
 pokemon.select("name").show(5)
 ```
 Need to hit a POST endpoint? Set `"request_type": "POST"` and attach your payload with
 `"request_body": {...}` (defaults to JSON encoding—add `"request_body_type": "data"` for form bodies).
 Flip on `"include_response_payload": True` to add a `response_payload` column with the raw server JSON.
 
-4) Query a SPARQL endpoint
+3) Query a SPARQL endpoint
 ```python
-from spark_fuse.io.sparql import SPARQLReader
+sparql_query = """
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 
-sparql_reader = SPARQLReader()
-sparql_df = sparql_reader.read(
+SELECT ?pokemon ?pokemonLabel ?pokedexNumber WHERE {
+  ?pokemon wdt:P31 wd:Q3966183 .
+  ?pokemon wdt:P1685 ?pokedexNumber .
+}
+LIMIT 5
+"""
+
+from spark_fuse.io import (
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    build_sparql_config,
+    register_sparql_data_source,
+)
+
+register_sparql_data_source(spark)
+sparql_options = build_sparql_config(
     spark,
     "https://query.wikidata.org/sparql",
     source_config={
-        "query": """
-        PREFIX wd: <http://www.wikidata.org/entity/>
-        PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-
-        SELECT ?pokemon ?pokemonLabel ?pokedexNumber WHERE {
-          ?pokemon wdt:P31 wd:Q3966183 .
-          ?pokemon wdt:P1685 ?pokedexNumber .
-        }
-        LIMIT 5
-        """,
+        "query": sparql_query,
         "request_type": "POST",
         "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
     },
+)
+sparql_df = (
+    spark.read.format(SPARQL_DATA_SOURCE_NAME)
+    .option(SPARQL_CONFIG_OPTION, json.dumps(sparql_options))
+    .load()
 )
 if sparql_df.rdd.isEmpty():
     print("Endpoint unavailable — adjust the query or check your network.")
@@ -119,10 +137,8 @@ Set `dry_run=True` to inspect how many rows already match without spending LLM t
 
 CLI Usage
 - `spark-fuse --help`
-- `spark-fuse connectors`
-- `spark-fuse read --path abfss://container@account.dfs.core.windows.net/path/to/delta --show 5`
-- `spark-fuse fabric-register --table lakehouse_table --path onelake://workspace/lakehouse/Tables/events`
-- `spark-fuse databricks-submit --json job.json`
+- `spark-fuse datasources`
+- `spark-fuse read --format rest --path https://pokeapi.co/api/v2/pokemon --config rest.json --show 5`
 
 CI
 - GitHub Actions runs ruff and pytest for Python 3.9–3.11.

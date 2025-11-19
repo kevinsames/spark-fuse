@@ -8,7 +8,12 @@ from typing import Any, Dict, Tuple
 
 import pytest
 
-from spark_fuse.io.rest_api import RestAPIReader
+from spark_fuse.io import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    build_rest_api_config,
+    register_rest_data_source,
+)
 
 
 class _ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -80,8 +85,7 @@ def test_rest_api_reader_query_pagination(spark):
             path = f"/items?limit=2&page={idx}"
             server_responses[path] = {"data": records, "meta": {"page": idx}}
 
-        reader = RestAPIReader()
-        df = reader.read(
+        config = build_rest_api_config(
             spark,
             f"{server_base}/items",
             source_config={
@@ -90,6 +94,12 @@ def test_rest_api_reader_query_pagination(spark):
                 "pagination": {"mode": "query", "param": "page", "start": 1, "stop": 2},
                 "parallelism": 1,
             },
+        )
+        register_rest_data_source(spark)
+        df = (
+            spark.read.format(REST_API_FORMAT)
+            .option(REST_API_CONFIG_OPTION, json.dumps(config))
+            .load()
         )
 
         rows = {(row.id, row.name) for row in df.select("id", "name").collect()}
@@ -124,8 +134,7 @@ def test_rest_api_reader_response_pagination_next_links(spark):
             "next": None,
         }
 
-        reader = RestAPIReader()
-        df = reader.read(
+        config = build_rest_api_config(
             spark,
             f"{server_base}/pokemon",
             source_config={
@@ -135,6 +144,12 @@ def test_rest_api_reader_response_pagination_next_links(spark):
                 "parallelism": 1,
                 "headers": {"User-Agent": "spark-fuse-tests"},
             },
+        )
+        register_rest_data_source(spark)
+        df = (
+            spark.read.format(REST_API_FORMAT)
+            .option(REST_API_CONFIG_OPTION, json.dumps(config))
+            .load()
         )
 
         ordered = [row.name for row in df.orderBy("name").collect()]
@@ -157,8 +172,7 @@ def test_rest_api_reader_post_request(spark):
             "results": [{"id": 42, "term": "pikachu"}],
         }
 
-        reader = RestAPIReader()
-        df = reader.read(
+        config = build_rest_api_config(
             spark,
             f"{server_base}{path}",
             source_config={
@@ -169,6 +183,12 @@ def test_rest_api_reader_post_request(spark):
                 "response_payload_field": "raw_payload",
                 "parallelism": 1,
             },
+        )
+        register_rest_data_source(spark)
+        df = (
+            spark.read.format(REST_API_FORMAT)
+            .option(REST_API_CONFIG_OPTION, json.dumps(config))
+            .load()
         )
 
         collected = [row.asDict(recursive=True) for row in df.collect()]

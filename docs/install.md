@@ -33,29 +33,33 @@ Java Setup Notes
 - Linux: install OpenJDK 17 (or 11 at minimum) using your distro’s package manager and set `JAVA_HOME` accordingly.
 
 Optional: Authentication and Environment
-- Azure ADLS Gen2 (abfss://): set environment variables for a Service Principal and pass Spark configs as needed.
-  - Env vars: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
-  - Example Spark configs via code:
-    - `fs.azure.account.auth.type.<account>.dfs.core.windows.net=OAuth`
-    - `fs.azure.account.oauth.provider.type.<account>.dfs.core.windows.net=org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider`
-    - `fs.azure.account.oauth2.client.id.<account>.dfs.core.windows.net=$AZURE_CLIENT_ID`
-    - `fs.azure.account.oauth2.client.secret.<account>.dfs.core.windows.net=$AZURE_CLIENT_SECRET`
-    - `fs.azure.account.oauth2.client.endpoint.<account>.dfs.core.windows.net=https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/token`
-- Databricks REST submit:
-  - Env vars: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`
-  - CLI: `spark-fuse databricks-submit --json payload.json`
-- Microsoft Fabric (OneLake): use `onelake://...` or `abfss://...@onelake.dfs.fabric.microsoft.com/...` URIs. Access is managed by your Fabric workspace identity.
+- REST APIs: set `headers` / `request_kwargs` in the REST data source options (see `build_rest_api_config`) for API keys, OAuth tokens, or proxies. Use environment variables to avoid committing secrets.
+- SPARQL endpoints: many public services require a descriptive `User-Agent` header—pass it via the data source config.
 
 Minimal Usage Example
 ```python
+import json
 from spark_fuse.spark import create_session
-from spark_fuse.io.registry import connector_for_path
+from spark_fuse.io import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    build_rest_api_config,
+    register_rest_data_source,
+)
 
 spark = create_session(app_name="spark-fuse-demo")
-path = "abfss://container@account.dfs.core.windows.net/path/to/delta"
-conn = connector_for_path(path)
-df = conn.read(spark, path)  # delta by default
-df.show(5)
+register_rest_data_source(spark)
+config = build_rest_api_config(
+    spark,
+    "https://pokeapi.co/api/v2/pokemon",
+    source_config={"records_field": "results", "pagination": {"mode": "response", "field": "next"}},
+)
+df = (
+    spark.read.format(REST_API_FORMAT)
+    .option(REST_API_CONFIG_OPTION, json.dumps(config))
+    .load()
+)
+df.select("name").show(5)
 ```
 
 Testing and Linting

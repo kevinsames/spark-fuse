@@ -9,7 +9,12 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from spark_fuse.io.sparql import SPARQLReader
+from spark_fuse.io import (
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    build_sparql_config,
+    register_sparql_data_source,
+)
 
 
 class _ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -105,14 +110,20 @@ def test_sparql_reader_select_with_metadata(spark):
             },
         }
 
-        reader = SPARQLReader()
-        df = reader.read(
+        config = build_sparql_config(
             spark,
             f"{server_base}{path}",
             source_config={
                 "query": "SELECT ?name ?population ?species WHERE { ?s ?p ?o }",
                 "include_metadata": True,
             },
+        )
+
+        register_sparql_data_source(spark)
+        df = (
+            spark.read.format(SPARQL_DATA_SOURCE_NAME)
+            .option(SPARQL_CONFIG_OPTION, json.dumps(config))
+            .load()
         )
 
         collected = _collect_rows(df)
@@ -157,11 +168,17 @@ def test_sparql_reader_boolean_response(spark):
         path = "/sparql"
         responses[("POST", path)] = {"boolean": True}
 
-        reader = SPARQLReader()
-        df = reader.read(
+        config = build_sparql_config(
             spark,
             f"{server_base}{path}",
             source_config={"query": "ASK WHERE { ?s ?p ?o }"},
+        )
+
+        register_sparql_data_source(spark)
+        df = (
+            spark.read.format(SPARQL_DATA_SOURCE_NAME)
+            .option(SPARQL_CONFIG_OPTION, json.dumps(config))
+            .load()
         )
 
         collected = _collect_rows(df)
@@ -183,14 +200,20 @@ def test_sparql_reader_get_request(spark):
             "results": {"bindings": [{"name": {"type": "literal", "value": "Eevee"}}]},
         }
 
-        reader = SPARQLReader()
-        df = reader.read(
+        config = build_sparql_config(
             spark,
             f"{server_base}{path}",
             source_config={
                 "query": "SELECT ?name WHERE { ?s ?p ?o }",
                 "request_type": "GET",
             },
+        )
+
+        register_sparql_data_source(spark)
+        df = (
+            spark.read.format(SPARQL_DATA_SOURCE_NAME)
+            .option(SPARQL_CONFIG_OPTION, json.dumps(config))
+            .load()
         )
 
         names = {row.name for row in df.collect()}

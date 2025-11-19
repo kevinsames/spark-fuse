@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import typer
 from rich import box
@@ -10,15 +10,26 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .. import __version__
-from ..io import azure_adls  # noqa: F401  # Ensure registration side-effects
-from ..io import databricks as dbr  # noqa: F401
-from ..io import fabric as fabric_io  # noqa: F401
-from ..io.registry import connector_for_path, list_connectors
+from ..io import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    build_rest_api_config,
+    build_sparql_config,
+    register_rest_data_source,
+    register_sparql_data_source,
+)
 from ..spark import create_session
 from ..utils.logging import console
 
 
 app = typer.Typer(name="spark-fuse", help="PySpark toolkit: connectors and CLI tools")
+
+_DATA_SOURCES: Dict[str, str] = {
+    "rest": "spark-fuse REST data source",
+    "sparql": "spark-fuse SPARQL data source",
+}
 
 
 @app.callback()
@@ -30,71 +41,67 @@ def _main(
         raise typer.Exit(code=0)
 
 
-@app.command("connectors")
-def connectors_cmd():
-    """List available connector plugins."""
-    table = Table(title="Connectors", box=box.SIMPLE_HEAVY)
+@app.command("datasources")
+def datasources_cmd():
+    """List available spark-fuse data sources."""
+    table = Table(title="Data Sources", box=box.SIMPLE_HEAVY)
     table.add_column("name")
-    for name in list_connectors():
-        table.add_row(name)
+    table.add_column("description")
+    for name, desc in sorted(_DATA_SOURCES.items()):
+        table.add_row(name, desc)
     console().print(table)
+
+
+def _load_config_blob(value: Optional[str]) -> Dict[str, Any]:
+    if not value:
+        return {}
+    candidate = Path(value)
+    if candidate.exists():
+        payload = candidate.read_text()
+    else:
+        payload = value
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"Invalid JSON payload: {exc}")
 
 
 @app.command("read")
 def read_cmd(
     path: str = typer.Option(..., help="Dataset path/URI"),
-    fmt: Optional[str] = typer.Option(None, help="Format override (delta/parquet/csv)"),
+    data_source: str = typer.Option(..., "--format", "-f", help="Data source to use (rest|sparql)"),
+    config: Optional[str] = typer.Option(
+        None, help="Inline JSON or path to JSON config passed to the data source"
+    ),
     show: int = typer.Option(5, help="Show N rows after load"),
 ):
-    """Load and preview a dataset using the connector inferred from the path."""
-    connector = connector_for_path(path)
-    if not connector:
-        console().print(Panel.fit(f"No connector found for: {path}", style="error"))
+    """Load and preview a dataset using one of spark-fuse's data sources."""
+
+    fmt = data_source.lower()
+    if fmt not in _DATA_SOURCES:
+        console().print(Panel.fit(f"Unsupported data source: {data_source}", style="error"))
         raise typer.Exit(code=2)
 
     spark = create_session(app_name="spark-fuse-read")
-    df = connector.read(spark, path, fmt=fmt)
-    console().print(
-        Panel.fit(f"Loaded with connector: {connector.name}", title="Info", style="info")
-    )
+    cfg = _load_config_blob(config)
+    if fmt == "rest":
+        register_rest_data_source(spark)
+        payload = build_rest_api_config(spark, path, source_config=cfg)
+        reader = spark.read.format(REST_API_FORMAT).option(
+            REST_API_CONFIG_OPTION, json.dumps(payload)
+        )
+    else:
+        register_sparql_data_source(spark)
+        payload = build_sparql_config(spark, path, source_config=cfg)
+        reader = spark.read.format(SPARQL_DATA_SOURCE_NAME).option(
+            SPARQL_CONFIG_OPTION, json.dumps(payload)
+        )
+
+    df = reader.load()
+
+    console().print(Panel.fit(f"Loaded with data source: {fmt}", title="Info", style="info"))
     df.show(show, truncate=False)
     console().print(f"Schema: {df.schema.simpleString()}")
-
-
-@app.command("fabric-register")
-def fabric_register_cmd(
-    table: str = typer.Option(..., help="Table name to create in current catalog/database"),
-    path: str = typer.Option(
-        ...,
-        help="OneLake Delta path (onelake:// or abfss://...onelake.dfs.fabric.microsoft.com/...)",
-    ),
-):
-    """Register an external Delta table backed by a Fabric OneLake location."""
-    spark = create_session(app_name="spark-fuse-fabric-register")
-    # Simple SQL compatible with Spark on Fabric/Delta.
-    sql = f"CREATE TABLE IF NOT EXISTS `{table}` USING DELTA LOCATION '{path}'"
-    spark.sql(sql)
-    console().print(Panel.fit("Fabric table registration completed", style="info"))
-
-
-@app.command("databricks-submit")
-def databricks_submit_cmd(
-    json_path: str = typer.Option(..., "--json", help="Path to JSON payload or inline JSON string"),
-    host: Optional[str] = typer.Option(None, help="Override DATABRICKS_HOST"),
-    token: Optional[str] = typer.Option(None, help="Override DATABRICKS_TOKEN"),
-):
-    """Submit a job to Databricks via REST API (Runs Submit)."""
-    payload_text: str
-    p = Path(json_path)
-    if p.exists():
-        payload_text = p.read_text()
-    else:
-        payload_text = json_path
-    payload = json.loads(payload_text)
-
-    resp = dbr.databricks_submit_job(payload, host=host, token=token)
-    run_id = resp.get("run_id")
-    console().print(Panel.fit(f"Job submitted: run_id={run_id}", style="info"))
 
 
 if __name__ == "__main__":
