@@ -1,28 +1,33 @@
 # spark-fuse
 
-spark-fuse is an open-source toolkit for PySpark — providing utilities, connectors, and tools to fuse your data workflows across Azure Storage (ADLS Gen2), Databricks, Microsoft Fabric Lakehouses (via OneLake/Delta), REST APIs, and SPARQL endpoints.
+spark-fuse is an open-source toolkit for PySpark — providing utilities, data sources, and tools to fuse your data workflows across REST APIs and SPARQL endpoints.
 
 ## Features
-- Connectors for ADLS Gen2 (`abfss://`), Fabric OneLake (`onelake://` or `abfss://...onelake.dfs.fabric.microsoft.com/...`), Databricks DBFS and catalog tables, REST APIs (JSON), and SPARQL services.
-- SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local).
+- Data sources for REST APIs (JSON payloads with pagination/retry support) and SPARQL services.
+- SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
 - Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
-- Typer-powered CLI: list connectors, preview datasets, register Fabric tables, and submit Databricks jobs.
+- Typer-powered CLI: list data sources and preview datasets via the REST/SPARQL helpers.
 
 ## Quickstart
 ```python
+import json
 from spark_fuse.spark import create_session
+from spark_fuse.io import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    build_rest_api_config,
+    build_sparql_config,
+    register_rest_data_source,
+    register_sparql_data_source,
+)
+
 spark = create_session(app_name="spark-fuse-quickstart")
 
-from spark_fuse.io.azure_adls import ADLSGen2Connector
-
-df = ADLSGen2Connector().read(spark, "abfss://container@account.dfs.core.windows.net/path/to/delta")
-df.show(5)
-
-from spark_fuse.io.rest_api import RestAPIReader
-
-reader = RestAPIReader()
-pokemon = reader.read(
+register_rest_data_source(spark)
+rest_config = build_rest_api_config(
     spark,
     "https://pokeapi.co/api/v2/pokemon",
     source_config={
@@ -30,11 +35,15 @@ pokemon = reader.read(
         "pagination": {"mode": "response", "field": "next", "max_pages": 2},
     },
 )
+pokemon = (
+    spark.read.format(REST_API_FORMAT)
+    .option(REST_API_CONFIG_OPTION, json.dumps(rest_config))
+    .load()
+)
 pokemon.select("name").show(5)
 
-from spark_fuse.io.sparql import SPARQLReader
-
-sparql_df = SPARQLReader().read(
+register_sparql_data_source(spark)
+sparql_options = build_sparql_config(
     spark,
     "https://query.wikidata.org/sparql",
     source_config={
@@ -51,6 +60,11 @@ sparql_df = SPARQLReader().read(
         "request_type": "POST",
         "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
     },
+)
+sparql_df = (
+    spark.read.format(SPARQL_DATA_SOURCE_NAME)
+    .option(SPARQL_CONFIG_OPTION, json.dumps(sparql_options))
+    .load()
 )
 sparql_df.show(5, truncate=False)
 
@@ -131,9 +145,7 @@ representatives = pipeline.select_representatives(clustered)
 The new guide in `docs/similarity_partitioning_demo.md` walks through the workflow, and `notebooks/demos/similarity_pipeline_demo.ipynb` provides an interactive companion.
 
 ## CLI
-- `spark-fuse connectors`
-- `spark-fuse read --path <uri> --show 5`
-- `spark-fuse fabric-register --table <t> --path <onelake-or-abfss-on-onelake>`
-- `spark-fuse databricks-submit --json job.json`
+- `spark-fuse datasources`
+- `spark-fuse read --format <rest|sparql> --path <uri> --config config.json --show 5`
 
 See the Install and CLI pages for more.

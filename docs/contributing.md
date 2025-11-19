@@ -27,7 +27,7 @@ Thank you for your interest in contributing! This guide covers the local dev set
 ## Project Layout
 - Package: `src/spark_fuse/...`
 - CLI entrypoint: `src/spark_fuse/tools/cli.py` (`spark-fuse`)
-- Connectors: `src/spark_fuse/io/`
+- Data sources: `src/spark_fuse/io/`
 - Spark helpers: `src/spark_fuse/spark.py`
 - Tests: `tests/`
 
@@ -37,16 +37,12 @@ Thank you for your interest in contributing! This guide covers the local dev set
 - Ruff rules (line length 100) enforced in CI.
 - Add/adjust tests alongside changes.
 
-## Adding a Connector
-1. Create a module under `src/spark_fuse/io/your_connector.py`.
-2. Subclass `Connector` from `io/base.py` and implement:
-   - `name: ClassVar[str]`
-   - `validate_path(path: str) -> bool`
-   - `read(spark, path, *, fmt=None, **options)`
-   - `write(df, path, *, fmt=None, mode="error", **options)`
-3. Register with `@register_connector` decorator.
-4. Add tests in `tests/io/` (path validation and basic behavior).
-5. Optionally wire a CLI command in `tools/cli.py`.
+## Adding a Data Source
+1. Create a module under `src/spark_fuse/io/your_datasource.py`.
+2. Implement a `pyspark.sql.datasource.DataSource` subclass (and reader) mirroring the REST/SPARQL examples.
+3. Provide helper functions (e.g., `register_<name>_data_source`, `read_<name>`) that hide the JSON plumbing required by Spark.
+4. Add tests in `tests/io/` that spin up a mock service and exercise the helper function.
+5. Document the new data source in the README, site landing page, and `docs/api/`.
 
 ## CLI Commands
 - Implement Typer commands in `tools/cli.py`.

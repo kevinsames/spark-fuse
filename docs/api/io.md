@@ -1,5 +1,3 @@
-# IO Core
+# IO Helpers
 
-::: spark_fuse.io.base
-
-::: spark_fuse.io.registry
+::: spark_fuse.io

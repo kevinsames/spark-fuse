@@ -1,12 +1,29 @@
-"""IO connectors and registry.
+"""spark-fuse data source helpers."""
 
-Import connector modules for side-effect registration so users/tests can rely on
-`spark_fuse.io` importing all built-ins.
-"""
+from .rest_api import (
+    REST_API_CONFIG_OPTION,
+    REST_API_FORMAT,
+    REST_API_SCHEMA_OPTION,
+    build_rest_api_config,
+    register_rest_data_source,
+)
+from .sparql import (
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    SPARQL_SCHEMA_OPTION,
+    build_sparql_config,
+    register_sparql_data_source,
+)
 
-# Ensure built-in connectors register with the plugin registry on import.
-from . import azure_adls as _azure_adls  # noqa: F401
-from . import fabric as _fabric  # noqa: F401
-from . import databricks as _databricks  # noqa: F401
-from . import rest_api as _rest_api  # noqa: F401
-from . import sparql as _sparql  # noqa: F401
+__all__ = [
+    "REST_API_FORMAT",
+    "REST_API_CONFIG_OPTION",
+    "REST_API_SCHEMA_OPTION",
+    "build_rest_api_config",
+    "SPARQL_DATA_SOURCE_NAME",
+    "SPARQL_CONFIG_OPTION",
+    "SPARQL_SCHEMA_OPTION",
+    "build_sparql_config",
+    "register_rest_data_source",
+    "register_sparql_data_source",
+]

@@ -1,6 +1,6 @@
-# SPARQL Reader Demo
+# SPARQL Data Source Demo
 
-`SPARQLReader` executes SPARQL queries over HTTP(S) endpoints and returns the results as Spark
+The SPARQL data source executes SPARQL queries over HTTP(S) endpoints and returns the results as Spark
 DataFrames. The companion notebook `notebooks/demos/sparql_reader_demo.ipynb` walks through a live query
 against the public Wikidata service and includes a small fallback dataset so the example remains
 useful when the endpoint is unavailable (for example in air-gapped environments).
@@ -13,9 +13,14 @@ useful when the endpoint is unavailable (for example in air-gapped environments)
 
 ## Basic usage
 ```python
-from spark_fuse.io.sparql import SPARQLReader
+import json
+from spark_fuse.io import (
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    build_sparql_config,
+    register_sparql_data_source,
+)
 
-reader = SPARQLReader()
 endpoint = "https://query.wikidata.org/sparql"
 
 sample_query = """
@@ -39,7 +44,13 @@ config = {
     "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
 }
 
-pokemon_df = reader.read(spark, endpoint, source_config=config)
+register_sparql_data_source(spark)
+options = build_sparql_config(spark, endpoint, source_config=config)
+pokemon_df = (
+    spark.read.format(SPARQL_DATA_SOURCE_NAME)
+    .option(SPARQL_CONFIG_OPTION, json.dumps(options))
+    .load()
+)
 pokemon_df.printSchema()
 if pokemon_df.rdd.isEmpty():
     print("Endpoint unavailable — using built-in fallback rows.")
@@ -48,16 +59,21 @@ else:
 ```
 
 ### Boolean queries (ASK)
-`SPARQLReader` also supports ASK queries that return a boolean payload.
+The data source also supports ASK queries that return a boolean payload.
 
 ```python
-ask_df = reader.read(
+ask_options = build_sparql_config(
     spark,
     {"endpoint": endpoint, "query": "ASK WHERE { wd:Q3966183 wdt:P31 wd:Q1656682 }"},
     source_config={
         "request_type": "POST",
         "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
     },
+)
+ask_df = (
+    spark.read.format(SPARQL_DATA_SOURCE_NAME)
+    .option(SPARQL_CONFIG_OPTION, json.dumps(ask_options))
+    .load()
 )
 ask_df.show()
 ```
