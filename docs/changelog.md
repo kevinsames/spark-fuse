@@ -11,6 +11,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Visualization helpers exposed via `spark_fuse.utils.visualization` and the dedicated demo notebook; lean on project-specific pandas/matplotlib code when rendering data.
 ### Changed
 - CLI `datasources` command replaces `connectors`, and `spark-fuse read` now requires `--format rest|sparql` to select the desired data source.
+- SCD helpers have been fully renamed to the change-tracking API (`spark_fuse.utils.change_tracking`) with `change_tracking_mode=current_only|track_history` and the new ``DataFrame.write.change_tracking`` sugar.
 
 ## [1.0.1] - 2025-11-18
 ### Added
