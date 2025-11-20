@@ -4,18 +4,24 @@ from pathlib import Path
 
 import pytest
 
+import spark_fuse.utils.change_tracking as change_tracking
 
 delta = pytest.importorskip("delta")  # ensure delta-spark is available when running tests
 
-from spark_fuse.utils.scd import SCDMode, apply_scd, scd1_upsert, scd2_upsert  # noqa: E402
+from spark_fuse.utils.change_tracking import (  # noqa: E402
+    ChangeTrackingMode,
+    apply_change_tracking,
+    current_only_upsert,
+    track_history_upsert,
+)
 
 
 def _rows_by_key(df, key: str):
     return {r[key]: r.asDict() for r in df.collect()}
 
 
-def test_scd1_upsert_dedup_and_update(spark, tmp_path: Path):
-    target = str(tmp_path / "scd1_target")
+def test_current_only_upsert_dedup_and_update(spark, tmp_path: Path):
+    target = str(tmp_path / "current_only_target")
 
     # Initial dataset with duplicates for id=1; keep latest by ts.
     df = spark.createDataFrame(
@@ -26,7 +32,7 @@ def test_scd1_upsert_dedup_and_update(spark, tmp_path: Path):
         ]
     )
 
-    scd1_upsert(
+    current_only_upsert(
         spark,
         df,
         target,
@@ -48,7 +54,7 @@ def test_scd1_upsert_dedup_and_update(spark, tmp_path: Path):
         ]
     )
 
-    scd1_upsert(
+    current_only_upsert(
         spark,
         df2,
         target,
@@ -60,11 +66,11 @@ def test_scd1_upsert_dedup_and_update(spark, tmp_path: Path):
     out2 = spark.read.format("delta").load(target)
     rows2 = _rows_by_key(out2, "id")
     assert set(rows2) == {1, 2, 3}
-    assert rows2[1]["val"] == "c"  # updated in-place (SCD1)
+    assert rows2[1]["val"] == "c"  # updated in-place (current-only)
 
 
-def test_scd2_upsert_versioning(spark, tmp_path: Path):
-    target = str(tmp_path / "scd2_target")
+def test_track_history_upsert_versioning(spark, tmp_path: Path):
+    target = str(tmp_path / "track_history_target")
 
     df = spark.createDataFrame(
         [
@@ -74,7 +80,7 @@ def test_scd2_upsert_versioning(spark, tmp_path: Path):
         ]
     )
 
-    scd2_upsert(
+    track_history_upsert(
         spark,
         df,
         target,
@@ -101,7 +107,7 @@ def test_scd2_upsert_versioning(spark, tmp_path: Path):
         ]
     )
 
-    scd2_upsert(
+    track_history_upsert(
         spark,
         df2,
         target,
@@ -124,8 +130,8 @@ def test_scd2_upsert_versioning(spark, tmp_path: Path):
     assert closed_count == 2
 
 
-def test_scd2_upsert_multiple_versions_same_batch(spark, tmp_path: Path):
-    target = str(tmp_path / "scd2_multi_batch")
+def test_track_history_upsert_multiple_versions_same_batch(spark, tmp_path: Path):
+    target = str(tmp_path / "track_history_multi_batch")
 
     df = spark.createDataFrame(
         [
@@ -135,7 +141,7 @@ def test_scd2_upsert_multiple_versions_same_batch(spark, tmp_path: Path):
         ]
     )
 
-    scd2_upsert(
+    track_history_upsert(
         spark,
         df,
         target,
@@ -153,8 +159,8 @@ def test_scd2_upsert_multiple_versions_same_batch(spark, tmp_path: Path):
     assert versions[-1].val == "c"
 
 
-def test_scd2_upsert_schema_evolution(spark, tmp_path: Path):
-    target = str(tmp_path / "scd2_schema_evolution")
+def test_track_history_upsert_schema_evolution(spark, tmp_path: Path):
+    target = str(tmp_path / "track_history_schema_evolution")
 
     df = spark.createDataFrame(
         [
@@ -162,7 +168,7 @@ def test_scd2_upsert_schema_evolution(spark, tmp_path: Path):
         ]
     )
 
-    scd2_upsert(
+    track_history_upsert(
         spark,
         df,
         target,
@@ -178,7 +184,7 @@ def test_scd2_upsert_schema_evolution(spark, tmp_path: Path):
         ]
     )
 
-    scd2_upsert(
+    track_history_upsert(
         spark,
         df_with_new_col,
         target,
@@ -197,8 +203,8 @@ def test_scd2_upsert_schema_evolution(spark, tmp_path: Path):
     assert previous["color"] is None
 
 
-def test_scd1_upsert_schema_evolution(spark, tmp_path: Path):
-    target = str(tmp_path / "scd1_schema_evolution")
+def test_current_only_upsert_schema_evolution(spark, tmp_path: Path):
+    target = str(tmp_path / "current_only_schema_evolution")
 
     base = spark.createDataFrame(
         [
@@ -206,7 +212,7 @@ def test_scd1_upsert_schema_evolution(spark, tmp_path: Path):
         ]
     )
 
-    scd1_upsert(
+    current_only_upsert(
         spark,
         base,
         target,
@@ -221,7 +227,7 @@ def test_scd1_upsert_schema_evolution(spark, tmp_path: Path):
         ]
     )
 
-    scd1_upsert(
+    current_only_upsert(
         spark,
         updates,
         target,
@@ -236,27 +242,114 @@ def test_scd1_upsert_schema_evolution(spark, tmp_path: Path):
     assert rows[1]["color"] == "red"
 
 
-def test_apply_scd_dispatch(spark, tmp_path: Path):
-    # SCD1 via dispatcher
-    target1 = str(tmp_path / "apply_scd_scd1")
+def test_apply_change_tracking_dispatch(spark, tmp_path: Path):
+    # current-only via dispatcher
+    target1 = str(tmp_path / "apply_change_tracking_current_only")
     df1 = spark.createDataFrame([{"id": 1, "val": "a"}, {"id": 2, "val": "b"}])
-    apply_scd(
-        spark, df1, target1, scd_mode=SCDMode.SCD1, business_keys=["id"], tracked_columns=["val"]
+    apply_change_tracking(
+        spark,
+        df1,
+        target1,
+        change_tracking_mode=ChangeTrackingMode.CURRENT_ONLY,
+        business_keys=["id"],
+        tracked_columns=["val"],
     )
     out1 = spark.read.format("delta").load(target1)
     assert out1.count() == 2
 
-    # SCD2 via dispatcher
-    target2 = str(tmp_path / "apply_scd_scd2")
+    # track-history via dispatcher
+    target2 = str(tmp_path / "apply_change_tracking_track_history")
     df2 = spark.createDataFrame([{"id": 1, "val": "a"}, {"id": 2, "val": "b"}])
-    apply_scd(
+    apply_change_tracking(
         spark,
         df2,
         target2,
-        scd_mode=SCDMode.SCD2,
+        change_tracking_mode=ChangeTrackingMode.TRACK_HISTORY,
         business_keys=["id"],
         tracked_columns=["val"],
         load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
     )
     out2 = spark.read.format("delta").load(target2)
     assert out2.filter("is_current = true").count() == 2
+
+
+def test_apply_change_tracking_from_options_routes(monkeypatch, spark, tmp_path: Path):
+    df = spark.createDataFrame([{"id": 1, "val": "a"}])
+    target = str(tmp_path / "dispatch_options")
+    called = {}
+
+    def fake_current(*args, **kwargs):
+        called["mode"] = "current"
+
+    def fake_history(*args, **kwargs):
+        called["mode"] = "history"
+
+    monkeypatch.setattr(change_tracking, "current_only_upsert", fake_current)
+    monkeypatch.setattr(change_tracking, "track_history_upsert", fake_history)
+
+    change_tracking.apply_change_tracking_from_options(
+        spark,
+        df,
+        target,
+        options={
+            "change_tracking_mode": "track_history",
+            "track_history_options": {"business_keys": ["id"], "tracked_columns": ["val"]},
+        },
+    )
+    assert called["mode"] == "history"
+
+
+def test_change_tracking_writer_uses_apply(monkeypatch, spark, tmp_path: Path):
+    df = spark.createDataFrame([{"id": 1, "val": "a"}])
+    target = str(tmp_path / "writer_target")
+    observed = {}
+
+    def fake_apply(*, spark, source_df, target, options):
+        observed["spark"] = spark
+        observed["source"] = source_df
+        observed["target"] = target
+        observed["options"] = options
+
+    monkeypatch.setattr(change_tracking, "apply_change_tracking_from_options", fake_apply)
+
+    (
+        df.write.change_tracking.options(
+            change_tracking_mode="current_only",
+            change_tracking_options={
+                "business_keys": ["id"],
+                "tracked_columns": ["val"],
+            },
+        ).table(target)
+    )
+
+    assert observed["spark"] is spark
+    assert observed["source"].collect() == df.collect()
+    assert observed["target"] == target
+    assert observed["options"]["change_tracking_mode"] == "current_only"
+
+
+def test_dataframe_change_tracking_property(monkeypatch, spark, tmp_path: Path):
+    df = spark.createDataFrame([{"id": 1, "val": "a"}])
+    target = str(tmp_path / "df_property_target")
+    calls = []
+
+    def fake_apply(*, spark, source_df, target, options):
+        calls.append((spark, source_df, target, options))
+
+    monkeypatch.setattr(change_tracking, "apply_change_tracking_from_options", fake_apply)
+
+    df.change_tracking.options(
+        change_tracking_mode="track_history",
+        change_tracking_options={
+            "business_keys": ["id"],
+            "tracked_columns": ["val"],
+            "load_ts_expr": "current_timestamp()",
+        },
+    ).table(target)
+
+    assert len(calls) == 1
+    spark_arg, source_arg, target_arg, opts = calls[0]
+    assert spark_arg is spark
+    assert source_arg.collect() == df.collect()
+    assert target_arg == target
+    assert opts["change_tracking_mode"] == "track_history"

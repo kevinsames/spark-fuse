@@ -2,28 +2,217 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from enum import Enum
-from typing import Iterable, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Union
 
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
+from pyspark.sql.readwriter import DataFrameWriter
 
 __all__ = [
-    "SCDMode",
-    "apply_scd",
-    "scd1_upsert",
-    "scd2_upsert",
+    "ChangeTrackingMode",
+    "apply_change_tracking",
+    "apply_change_tracking_from_options",
+    "current_only_upsert",
+    "track_history_upsert",
+    "change_tracking_writer",
+    "enable_change_tracking_accessors",
+    "ChangeTrackingWriteBuilder",
 ]
 
 
 # Delimiter used for stable row-hash concatenation (Unit Separator)
 UNIT_SEPARATOR = "\u241f"
-SCD_SEQUENCE_COL = "__scd_seq"
+CHANGE_TRACKING_SEQUENCE_COL = "__change_tracking_seq"
 
 
-class SCDMode(str, Enum):
-    SCD1 = "SCD1"
-    SCD2 = "SCD2"
+class ChangeTrackingMode(str, Enum):
+    """Accepted values for ``change_tracking_mode``.
+
+    * ``CURRENT_ONLY`` – keep exactly one current row per key (Type 1 semantics).
+    * ``TRACK_HISTORY`` – create new versions + close previous ones (Type 2 semantics).
+    """
+
+    CURRENT_ONLY = "current_only"
+    TRACK_HISTORY = "track_history"
+
+
+_MODE_ALIASES = {
+    "1": ChangeTrackingMode.CURRENT_ONLY,
+    "current": ChangeTrackingMode.CURRENT_ONLY,
+    "current_only": ChangeTrackingMode.CURRENT_ONLY,
+    "currentonly": ChangeTrackingMode.CURRENT_ONLY,
+    "2": ChangeTrackingMode.TRACK_HISTORY,
+    "track_history": ChangeTrackingMode.TRACK_HISTORY,
+    "trackhistory": ChangeTrackingMode.TRACK_HISTORY,
+    "history": ChangeTrackingMode.TRACK_HISTORY,
+}
+
+_MODE_OPTION_KEY = "change_tracking_mode"
+_COMMON_OPTION_KEYS = {"change_tracking_options"}
+_MODE_SPECIFIC_OPTION_KEYS = {
+    ChangeTrackingMode.CURRENT_ONLY: {"current_only_options"},
+    ChangeTrackingMode.TRACK_HISTORY: {"track_history_options"},
+}
+
+
+def _normalize_option_key(key: Any) -> str:
+    if key is None:
+        raise ValueError("Option keys must be non-null")
+    return str(key).strip().lower()
+
+
+def _resolve_mode(value: Union[ChangeTrackingMode, str, int]) -> ChangeTrackingMode:
+    if isinstance(value, ChangeTrackingMode):
+        return value
+    if isinstance(value, int):
+        if value == 1:
+            return ChangeTrackingMode.CURRENT_ONLY
+        if value == 2:
+            return ChangeTrackingMode.TRACK_HISTORY
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _MODE_ALIASES:
+            return _MODE_ALIASES[normalized]
+    raise ValueError(
+        f"Unsupported change_tracking_mode '{value}'. Use 1/2 or current_only/track_history."
+    )
+
+
+def _ensure_mapping(value: Any, *, option_name: str) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise TypeError(
+        f"Option '{option_name}' must be a mapping/dict of keyword arguments for the change tracking strategy."
+    )
+
+
+def _extract_tracking_kwargs_from_options(
+    options: Mapping[str, Any],
+) -> tuple[ChangeTrackingMode, Dict[str, Any]]:
+    if not options:
+        raise ValueError("At least the 'change_tracking_mode' option must be provided.")
+
+    normalized: Dict[str, Any] = {}
+    for key, value in options.items():
+        normalized[_normalize_option_key(key)] = value
+
+    if _MODE_OPTION_KEY not in normalized:
+        raise ValueError("Missing required option 'change_tracking_mode'.")
+
+    change_tracking_mode = _resolve_mode(normalized[_MODE_OPTION_KEY])
+
+    option_keys = set(_COMMON_OPTION_KEYS) | _MODE_SPECIFIC_OPTION_KEYS[change_tracking_mode]
+    change_tracking_kwargs: Dict[str, Any] = {}
+    for alias in option_keys:
+        if alias in normalized:
+            change_tracking_kwargs = _ensure_mapping(normalized[alias], option_name=alias)
+            break
+
+    return change_tracking_mode, change_tracking_kwargs
+
+
+class ChangeTrackingWriteBuilder:
+    """Thin wrapper that applies change-tracking semantics via ``df.write.change_tracking``."""
+
+    def __init__(self, df: DataFrame):
+        self._df = df
+        self._spark = df.sparkSession
+        self._options: Dict[str, Any] = {}
+
+    def option(self, key: str, value: Any) -> "ChangeTrackingWriteBuilder":
+        self._options[str(key)] = value
+        return self
+
+    def options(self, *args: Mapping[str, Any], **kwargs: Any) -> "ChangeTrackingWriteBuilder":
+        if len(args) > 1:
+            raise TypeError("options() accepts at most one positional mapping argument.")
+        if args:
+            mapping = args[0]
+            if not isinstance(mapping, Mapping):
+                raise TypeError("options() positional argument must be a mapping/dict.")
+            for key, value in mapping.items():
+                self.option(key, value)
+        for key, value in kwargs.items():
+            self.option(key, value)
+        return self
+
+    def clear(self) -> "ChangeTrackingWriteBuilder":
+        self._options.clear()
+        return self
+
+    def table(self, name: str, **options: Any) -> None:
+        if options:
+            self.options(**options)
+        # Use a copy so that downstream mutations do not affect stored state.
+        payload = dict(self._options)
+        try:
+            apply_change_tracking_from_options(
+                spark=self._spark, source_df=self._df, target=name, options=payload
+            )
+        finally:
+            self.clear()
+
+
+def change_tracking_writer(df: DataFrame) -> ChangeTrackingWriteBuilder:
+    """Return a builder that mirrors ``DataFrameWriter`` but routes to change-tracking helpers."""
+
+    return ChangeTrackingWriteBuilder(df)
+
+
+def enable_change_tracking_accessors(*, force: bool = False) -> None:
+    """Attach ``.change_tracking`` helpers to ``DataFrame``/``DataFrameWriter`` for fluent usage.
+
+    Once enabled (this module runs it on import), both ``df.change_tracking`` and
+    ``df.write.change_tracking`` expose the :class:`ChangeTrackingWriteBuilder`, enabling fluent
+    expressions such as ``df.write.change_tracking.options(...).table(...)``.
+
+    Args:
+        force: When ``True`` re-installs the accessors even if they already exist.
+    """
+
+    df_attrs = getattr(DataFrame, "__dict__", {})
+    dfw_attrs = getattr(DataFrameWriter, "__dict__", {})
+
+    def _df_change_tracking(self: DataFrame) -> ChangeTrackingWriteBuilder:
+        return change_tracking_writer(self)
+
+    def _dfw_change_tracking(self: DataFrameWriter) -> ChangeTrackingWriteBuilder:
+        return change_tracking_writer(self._df)
+
+    if force or "change_tracking" not in df_attrs:
+        DataFrame.change_tracking = property(_df_change_tracking)  # type: ignore[attr-defined]
+    if force or "change_tracking" not in dfw_attrs:
+        DataFrameWriter.change_tracking = property(_dfw_change_tracking)  # type: ignore[attr-defined]
+
+
+enable_change_tracking_accessors()
+
+
+def apply_change_tracking_from_options(
+    spark: SparkSession,
+    source_df: DataFrame,
+    target: str,
+    *,
+    options: Mapping[str, Any],
+) -> None:
+    """Route the write based on ``df.write``-style options.
+
+    Used by :class:`ChangeTrackingWriteBuilder` and data-frame accessors.
+
+    Expected keys:
+      - ``change_tracking_mode``: accepts ``1``/``2`` or ``current_only``/``track_history``.
+      - Strategy options via ``current_only_options``/``track_history_options`` or the generic
+        ``change_tracking_options`` key.
+    """
+
+    change_tracking_mode, change_tracking_kwargs = _extract_tracking_kwargs_from_options(options)
+    if change_tracking_mode == ChangeTrackingMode.CURRENT_ONLY:
+        current_only_upsert(spark, source_df, target, **change_tracking_kwargs)
+    else:
+        track_history_upsert(spark, source_df, target, **change_tracking_kwargs)
 
 
 def _is_delta_path(identifier: str) -> bool:
@@ -85,7 +274,7 @@ def _coalesce_cast_to_string(col: F.Column) -> F.Column:
     return F.coalesce(col.cast("string"), F.lit(""))
 
 
-def _scd2_process_batch(
+def _track_history_process_batch(
     spark: SparkSession,
     source_batch: DataFrame,
     target: str,
@@ -103,7 +292,7 @@ def _scd2_process_batch(
     target_exists: bool,
     allow_schema_evolution: bool,
 ) -> bool:
-    """Apply SCD2 semantics for a batch that has at most one row per business key."""
+    """Apply track-history semantics for a batch that has at most one row per business key."""
 
     if not target_exists:
         if not create_if_not_exists:
@@ -178,7 +367,7 @@ def _scd2_process_batch(
     return True
 
 
-def scd1_upsert(
+def current_only_upsert(
     spark: SparkSession,
     source_df: DataFrame,
     target: str,
@@ -192,14 +381,16 @@ def scd1_upsert(
     create_if_not_exists: bool = True,
     allow_schema_evolution: bool = False,
 ) -> None:
-    """Perform SCD Type 1 upsert (no history): keep exactly one current row per business key.
+    """Implement :class:`ChangeTrackingMode.CURRENT_ONLY`.
 
-    Logic:
-      - De-duplicate input on `dedupe_keys` (default business_keys) using `order_by` to keep latest.
-      - Compute a stable `row_hash` over tracked columns.
-      - MERGE into target: update when hash differs, insert when not matched.
-      - When ``allow_schema_evolution`` is ``True``, Delta's auto-merge option is enabled so any new
-        columns present in ``source_df`` are automatically added to the target table.
+    Keeps exactly one active row per ``business_keys`` combination by:
+
+    1. De-duplicating within the incoming batch using ``dedupe_keys``/``order_by``.
+    2. Hashing the tracked columns to detect changes.
+    3. Running a Delta ``MERGE`` that updates only when the row changed and inserts when missing.
+
+    When ``allow_schema_evolution`` is ``True`` we temporarily enable Delta auto-merge so new source
+    columns are added to the target on demand.
     """
 
     if not business_keys:
@@ -280,11 +471,11 @@ def scd1_upsert(
             " OR ".join([f"NOT (t.`{c}` <=> s.`{c}`)" for c in tracked_columns]) or "false"
         )
 
-    # Build column maps (exclude technical SCD2 columns if they exist in target)
+    # Build column maps (exclude technical track-history columns if they exist in target)
     src_cols = src_hashed.columns
-    # If target has SCD2 fields, do not attempt to write them in SCD1
-    scd2_fields = {"effective_start_ts", "effective_end_ts", "is_current", "version"}
-    write_cols = [c for c in src_cols if c not in scd2_fields]
+    # If target has history fields, do not attempt to write them during current-only merges
+    history_fields = {"effective_start_ts", "effective_end_ts", "is_current", "version"}
+    write_cols = [c for c in src_cols if c not in history_fields]
 
     set_map = {c: F.col(f"s.`{c}`") for c in write_cols}
     insert_map = {c: F.col(f"s.`{c}`") for c in write_cols}
@@ -305,7 +496,7 @@ def scd1_upsert(
         )
 
 
-def scd2_upsert(
+def track_history_upsert(
     spark: SparkSession,
     source_df: DataFrame,
     target: str,
@@ -324,7 +515,7 @@ def scd2_upsert(
     create_if_not_exists: bool = True,
     allow_schema_evolution: bool = False,
 ) -> None:
-    """Perform SCD Type 2 upsert into a Delta table (Unity Catalog table name or Delta path).
+    """Implement :class:`ChangeTrackingMode.TRACK_HISTORY`.
 
     Two-step algorithm:
       1) Close currently active target rows when incoming record for same key has a different row hash.
@@ -369,9 +560,11 @@ def scd2_upsert(
     if missing_keys:
         raise ValueError(f"source_df missing business_keys: {missing_keys}")
 
-    scd_meta = {effective_col, expiry_col, current_col, version_col, hash_col}
+    tracking_meta = {effective_col, expiry_col, current_col, version_col, hash_col}
     if tracked_columns is None:
-        tracked_columns = [c for c in source_df.columns if c not in set(business_keys) | scd_meta]
+        tracked_columns = [
+            c for c in source_df.columns if c not in set(business_keys) | tracking_meta
+        ]
     else:
         missing_tracked = [c for c in tracked_columns if c not in src_cols_set]
         if missing_tracked:
@@ -400,10 +593,10 @@ def scd2_upsert(
         w = Window.partitionBy(*[F.col(k) for k in dedupe_keys]).orderBy(
             *[F.col(c).desc_nulls_last() for c in order_by]
         )
-        source_df = source_df.withColumn(SCD_SEQUENCE_COL, F.row_number().over(w))
+        source_df = source_df.withColumn(CHANGE_TRACKING_SEQUENCE_COL, F.row_number().over(w))
     else:
         source_df = source_df.dropDuplicates(list(dedupe_keys)).withColumn(
-            SCD_SEQUENCE_COL, F.lit(1)
+            CHANGE_TRACKING_SEQUENCE_COL, F.lit(1)
         )
 
     # Compute deterministic row hash over tracked columns
@@ -435,9 +628,9 @@ def scd2_upsert(
     if should_cache:
         source_hashed = source_hashed.cache()
 
-    max_seq_val = source_hashed.agg(F.max(F.col(SCD_SEQUENCE_COL)).alias("__max_seq")).collect()[0][
-        "__max_seq"
-    ]
+    max_seq_val = source_hashed.agg(
+        F.max(F.col(CHANGE_TRACKING_SEQUENCE_COL)).alias("__max_seq")
+    ).collect()[0]["__max_seq"]
 
     if max_seq_val is None:
         if should_cache:
@@ -446,8 +639,10 @@ def scd2_upsert(
 
     create_flag = create_if_not_exists
     for seq in range(int(max_seq_val), 0, -1):
-        batch = source_hashed.where(F.col(SCD_SEQUENCE_COL) == seq).drop(SCD_SEQUENCE_COL)
-        target_exists = _scd2_process_batch(
+        batch = source_hashed.where(F.col(CHANGE_TRACKING_SEQUENCE_COL) == seq).drop(
+            CHANGE_TRACKING_SEQUENCE_COL
+        )
+        target_exists = _track_history_process_batch(
             spark,
             batch,
             target,
@@ -470,23 +665,24 @@ def scd2_upsert(
         source_hashed.unpersist()
 
 
-def apply_scd(
+def apply_change_tracking(
     spark: SparkSession,
     source_df: DataFrame,
     target: str,
     *,
-    scd_mode: SCDMode,
+    change_tracking_mode: Union[ChangeTrackingMode, str, int],
     **kwargs,
 ) -> None:
-    """Unified entry point to apply SCD semantics.
+    """Unified entry point for change-tracking writes.
 
-    Examples
-    --------
-    apply_scd(spark, df, "main.dim.customer", scd_mode=SCDMode.SCD2, business_keys=["customer_id"], ...)
+    ``change_tracking_mode`` accepts:
+      - :class:`ChangeTrackingMode`
+      - ``"current_only"`` / ``"track_history"``
+      - ``1`` / ``2`` (handy when passing options via strings)
     """
-    if scd_mode == SCDMode.SCD1:
-        return scd1_upsert(spark, source_df, target, **kwargs)
-    elif scd_mode == SCDMode.SCD2:
-        return scd2_upsert(spark, source_df, target, **kwargs)
+
+    resolved = _resolve_mode(change_tracking_mode)
+    if resolved == ChangeTrackingMode.CURRENT_ONLY:
+        return current_only_upsert(spark, source_df, target, **kwargs)
     else:
-        raise ValueError(f"Unsupported scd_mode: {scd_mode}")
+        return track_history_upsert(spark, source_df, target, **kwargs)
