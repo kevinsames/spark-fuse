@@ -33,6 +33,7 @@ dependencies = [
   "requests>=2",
   "numpy>=2,<3",
   "pandas>=2,<3",
+  "pyarrow>=14",
   "sentence-transformers>=2.5",
 ]
 
