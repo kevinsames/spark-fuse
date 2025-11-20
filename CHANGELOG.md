@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Removed
 - ADLS Gen2, Microsoft Fabric, and Databricks connectors along with their CLI commands/documentation; the IO package now focuses on REST and SPARQL sources.
 - `read_rest_api` and `read_sparql` helpers; use the Spark Data Source API directly via the new config builders and options.
+- Visualization helpers under `spark_fuse.utils.visualization` and the accompanying demo notebook now that users can rely on bespoke pandas/matplotlib workflows outside the library.
 ### Changed
 - CLI `connectors` command has been replaced by `datasources`, and `spark-fuse read` now requires an explicit `--format` (`rest` or `sparql`).
 
