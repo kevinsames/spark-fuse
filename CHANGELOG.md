@@ -13,6 +13,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - CLI `connectors` command has been replaced by `datasources`, and `spark-fuse read` now requires an explicit `--format` (`rest` or `sparql`).
 - Renamed the SCD helpers to the change-tracking API (`spark_fuse.utils.change_tracking`) with `change_tracking_mode=current_only|track_history`, new option names, and a ``DataFrame.write.change_tracking`` entry point.
 
+## [1.0.2] - 2025-12-01
+### Added
+- Exported lightweight progress helpers (`create_progress_tracker`, `log_progress`) from `spark_fuse.utils.logging` so notebooks can log elapsed time consistently.
+- Template data-processing notebook now inspects Delta logs before/after writes and supports change-tracking writes with schema evolution.
+
+### Changed
+- Default template write path renamed to `/tmp/spark_fuse/orders_enriched_ct` and uses `DataFrame.write.change_tracking` when Delta is available, falling back to Parquet otherwise.
+
 ## [1.0.1] - 2025-11-18
 ### Added
 - Unit coverage for `scd2_upsert` scenarios where multiple changes for a key arrive in the same
