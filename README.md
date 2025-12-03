@@ -11,6 +11,8 @@ Features
 - SparkSession helpers with sensible defaults and environment detection (databricks/fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, schema checks, and ready-made date/time dimensions (daily calendar attributes and clock buckets).
 - LLM-powered semantic column normalization that batches API calls and caches responses.
+- Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
+- Change-tracking helpers to write current-only or history-preserving datasets with concise options.
 - Typer-powered CLI: list data sources and preview datasets via the REST/SPARQL helpers.
 
 Installation
@@ -24,7 +26,7 @@ Installation
     - `.\\.venv\\Scripts\\Activate.ps1`
     - `python -m pip install --upgrade pip`
 - From source (dev): `pip install -e ".[dev]"`
-- From PyPI: `pip install "spark-fuse>=0.3.2"`
+- From PyPI: `pip install "spark-fuse>=1.0.2"`
 
 Quickstart
 1) Create a SparkSession with helpful defaults
@@ -92,7 +94,7 @@ sparql_options = build_sparql_config(
     source_config={
         "query": sparql_query,
         "request_type": "POST",
-        "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
+    "headers": {"User-Agent": "spark-fuse-demo/1.0 (contact@example.com)"},
     },
 )
 sparql_df = (
@@ -106,7 +108,7 @@ else:
     sparql_df.show(5, truncate=False)
 ```
 
-5) Build date/time dimensions with rich attributes
+4) Build date/time dimensions with rich attributes
 ```python
 from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
 
@@ -117,6 +119,29 @@ date_dim.select("date", "year", "week", "day_name").show()
 time_dim.select("time", "hour", "minute").show(5)
 ```
 Check out `notebooks/demos/date_time_dimensions_demo.ipynb` for an interactive walkthrough.
+
+5) Partition embeddings and pick representatives
+```python
+from spark_fuse.similarity import (
+    CosineSimilarity,
+    IdentityEmbeddingGenerator,
+    KMeansPartitioner,
+    MaxColumnChoice,
+    SimilarityPipeline,
+)
+
+pipeline = SimilarityPipeline(
+    embedding_generator=IdentityEmbeddingGenerator(input_col="embedding"),
+    partitioner=KMeansPartitioner(k=3, seed=7),
+    similarity_metric=CosineSimilarity(embedding_col="embedding"),
+    choice_function=MaxColumnChoice(column="score"),
+)
+
+clustered = pipeline.run(df)
+representatives = pipeline.select_representatives(clustered)
+```
+See `docs/similarity_partitioning_demo.md` for a walkthrough and `notebooks/demos/similarity_pipeline_demo.ipynb` for an
+interactive companion.
 
 LLM-Powered Column Mapping
 ```python
@@ -133,7 +158,7 @@ mapped_df = map_column_with_llm(
 mapped_df.select("fruit", "fruit_mapped").show()
 ```
 
-Set `dry_run=True` to inspect how many rows already match without spending LLM tokens. Configure your OpenAI or Azure OpenAI credentials with the usual environment variables before running live mappings. Some provider models only accept their default sampling configuration—pass `temperature=None` to omit the parameter when needed. This helper ships with spark-fuse 0.2.0 and later.
+Set `dry_run=True` to inspect how many rows already match without spending LLM tokens. Configure your OpenAI or Azure OpenAI credentials with the usual environment variables before running live mappings. Some provider models only accept their default sampling configuration—pass `temperature=None` to omit the parameter when needed. The helper is available across spark-fuse 0.2.0 and later, including the 1.0.x series.
 
 CLI Usage
 - `spark-fuse --help`

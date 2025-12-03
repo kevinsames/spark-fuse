@@ -3,7 +3,7 @@ spark-fuse — Install Guide
 
 Prerequisites
 - Python: 3.9+
-- Java: JDK 11 or 17 (required by PySpark 4.x)
+- Java: JDK 17 (recommended; PySpark 4.x)
 - OS packages: build tools to compile native deps if needed
 
 Virtual Environment (recommended)
@@ -17,7 +17,7 @@ Virtual Environment (recommended)
   - `python -m pip install --upgrade pip`
 
 Quick Install (PyPI)
-- `pip install spark-fuse`
+- `pip install "spark-fuse>=1.0.2"`
 
 Development Install (editable)
 - `python -m pip install --upgrade pip`

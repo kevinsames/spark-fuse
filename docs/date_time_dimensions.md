@@ -1,6 +1,6 @@
 # Date & Time Dimensions
 
-spark-fuse 0.3.0 introduces `create_date_dataframe` and `create_time_dataframe` helpers for quickly building reusable calendar and clock dimensions in PySpark.
+spark-fuse ships `create_date_dataframe` and `create_time_dataframe` helpers for quickly building reusable calendar and clock dimensions in PySpark.
 
 ## Date dimension
 
