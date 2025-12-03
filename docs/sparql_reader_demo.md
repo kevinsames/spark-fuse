@@ -41,7 +41,7 @@ config = {
     "include_metadata": True,
     "metadata_suffix": "__",
     "coerce_types": True,
-    "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
+    "headers": {"User-Agent": "spark-fuse-demo/1.0 (contact@example.com)"},
 }
 
 register_sparql_data_source(spark)
@@ -67,7 +67,7 @@ ask_options = build_sparql_config(
     {"endpoint": endpoint, "query": "ASK WHERE { wd:Q3966183 wdt:P31 wd:Q1656682 }"},
     source_config={
         "request_type": "POST",
-        "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
+        "headers": {"User-Agent": "spark-fuse-demo/1.0 (contact@example.com)"},
     },
 )
 ask_df = (

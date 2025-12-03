@@ -1,5 +1,5 @@
 site_name: spark-fuse
-site_description: Open-source PySpark toolkit for REST APIs and SPARQL endpoints.
+site_description: Open-source PySpark toolkit for REST/SPARQL data, change tracking, and similarity workflows.
 site_url: https://kevinsames.github.io/spark-fuse/
 repo_name: kevinsames/spark-fuse
 repo_url: https://github.com/kevinsames/spark-fuse
@@ -56,6 +56,7 @@ nav:
       - Security: security.md
       - Governance: governance.md
       - Changelog: changelog.md
+      - Release v1.0.2: releases/v1.0.2.md
       - Release v1.0.1: releases/v1.0.1.md
       - Release v1.0.0: releases/v1.0.0.md
       - Maintainers: maintainers.md

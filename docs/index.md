@@ -6,25 +6,28 @@ spark-fuse is an open-source toolkit for PySpark — providing utilities, data s
 - Data sources for REST APIs (JSON payloads with pagination/retry support) and SPARQL services.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
+- Change-tracking helpers to capture current-only or history-preserving datasets with concise writer options.
 - Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
 - Typer-powered CLI: list data sources and preview datasets via the REST/SPARQL helpers.
 
 ## Quickstart
+
+1) Create a SparkSession
+```python
+from spark_fuse.spark import create_session
+
+spark = create_session(app_name="spark-fuse-quickstart")
+```
+
+2) Load paginated REST API responses
 ```python
 import json
-from spark_fuse.spark import create_session
 from spark_fuse.io import (
     REST_API_CONFIG_OPTION,
     REST_API_FORMAT,
-    SPARQL_CONFIG_OPTION,
-    SPARQL_DATA_SOURCE_NAME,
     build_rest_api_config,
-    build_sparql_config,
     register_rest_data_source,
-    register_sparql_data_source,
 )
-
-spark = create_session(app_name="spark-fuse-quickstart")
 
 register_rest_data_source(spark)
 rest_config = build_rest_api_config(
@@ -41,6 +44,16 @@ pokemon = (
     .load()
 )
 pokemon.select("name").show(5)
+```
+
+3) Query a SPARQL endpoint
+```python
+from spark_fuse.io import (
+    SPARQL_CONFIG_OPTION,
+    SPARQL_DATA_SOURCE_NAME,
+    build_sparql_config,
+    register_sparql_data_source,
+)
 
 register_sparql_data_source(spark)
 sparql_options = build_sparql_config(
@@ -58,7 +71,7 @@ sparql_options = build_sparql_config(
         LIMIT 5
         """,
         "request_type": "POST",
-        "headers": {"User-Agent": "spark-fuse-demo/0.3 (contact@example.com)"},
+        "headers": {"User-Agent": "spark-fuse-demo/1.0 (contact@example.com)"},
     },
 )
 sparql_df = (
@@ -66,9 +79,13 @@ sparql_df = (
     .option(SPARQL_CONFIG_OPTION, json.dumps(sparql_options))
     .load()
 )
-sparql_df.show(5, truncate=False)
+if sparql_df.rdd.isEmpty():
+    print("Endpoint unavailable — adjust the query or check your network.")
+else:
+    sparql_df.show(5, truncate=False)
+```
 
-### LLM-powered semantic mapping
+4) LLM-powered semantic mapping
 ```python
 from spark_fuse.utils.transformations import map_column_with_llm
 
@@ -83,16 +100,12 @@ normalized = map_column_with_llm(
 normalized.select("fruit", "fruit_mapped").show()
 ```
 
-
-
 #### Azure OpenAI token estimate
 
 For sizing, assume:
 
 - 2,000 rows with ~50 characters each (≈50 tokens).
-
 - `target_values` totalling 100 characters (≈25 tokens).
-
 - `o4-mini` model with `temperature=None`.
 
 Each request sends ≈75 input tokens and returns ≈10 tokens, totalling ≈85 tokens per row.
@@ -106,9 +119,9 @@ As a reference, OpenAI currently lists o4-mini input tokens at $0.0006 per 1K to
 
 Azure OpenAI pricing may differ; always confirm with your subscription's rate card before running large workloads.
 
-Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready. Some models only accept their default sampling configuration—use `temperature=None` to omit the parameter when required. The LLM mapper is available starting in spark-fuse 0.2.0.
+Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready. Some models only accept their default sampling configuration—use `temperature=None` to omit the parameter when required. The LLM mapper is available across spark-fuse 0.2.0 and later, including the 1.0.x releases.
 
-### Calendar and time dimensions
+5) Calendar and time dimensions
 ```python
 from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
 
@@ -121,7 +134,7 @@ times.select("time", "hour", "minute").show()
 
 Try the interactive `notebooks/demos/date_time_dimensions_demo.ipynb` notebook to explore the helpers end-to-end.
 
-### Similarity partitioning (new in 0.4.0)
+6) Similarity partitioning
 ```python
 from spark_fuse.similarity import (
     CosineSimilarity,
@@ -142,7 +155,7 @@ clustered = pipeline.run(df)
 representatives = pipeline.select_representatives(clustered)
 ```
 
-The new guide in `docs/similarity_partitioning_demo.md` walks through the workflow, and `notebooks/demos/similarity_pipeline_demo.ipynb` provides an interactive companion.
+The `docs/similarity_partitioning_demo.md` guide walks through the workflow, and `notebooks/demos/similarity_pipeline_demo.ipynb` provides an interactive companion.
 
 ## CLI
 - `spark-fuse datasources`
