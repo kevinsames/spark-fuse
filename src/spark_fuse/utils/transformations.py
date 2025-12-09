@@ -3,12 +3,28 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import requests
 
 from pyspark.sql import DataFrame, functions as F
-from pyspark.sql.types import DataType, StringType
+from pyspark.sql.functions import pandas_udf
+from pyspark.sql.types import ArrayType, DataType, FloatType, StringType
+
+if TYPE_CHECKING:
+    from langchain_core.embeddings import Embeddings  # pragma: no cover
+    from langchain_text_splitters.base import TextSplitter  # pragma: no cover
 
 __all__ = [
     "rename_columns",
@@ -16,6 +32,7 @@ __all__ = [
     "cast_columns",
     "normalize_whitespace",
     "split_by_date_formats",
+    "with_langchain_embeddings",
     "map_column_with_llm",
 ]
 
@@ -268,6 +285,192 @@ def split_by_date_formats(
     if return_unmatched:
         result = (result_df, unmatched_df)
     return result
+
+
+def with_langchain_embeddings(
+    df: DataFrame,
+    input_col: str,
+    embeddings: Union["Embeddings", Callable[[], "Embeddings"]],
+    *,
+    output_col: str = "embedding",
+    batch_size: int = 16,
+    text_splitter: Optional[Union["TextSplitter", Callable[[], "TextSplitter"]]] = None,
+    aggregation: str = "mean",
+    drop_input: bool = False,
+) -> DataFrame:
+    """Add a column of vector embeddings using a LangChain ``Embeddings`` model.
+
+    The function uses a Pandas UDF to batch calls to ``embed_documents`` and reuse a
+    single embeddings instance per executor. Provide either an instantiated LangChain
+    embeddings object or a zero-argument callable that returns one—factories are useful
+    when clients (e.g., OpenAI) are not picklable. Optionally supply a LangChain text
+    splitter to chunk long inputs before embedding; chunk embeddings are combined using
+    ``aggregation`` (``"mean"`` or ``"first"``).
+
+    Args:
+        df: Input DataFrame containing the raw text column.
+        input_col: Name of the column with text to embed.
+        embeddings: LangChain embeddings instance or factory returning one.
+        output_col: Name of the resulting column containing ``array<float>`` vectors.
+        batch_size: Number of rows to embed per batch inside the UDF.
+        text_splitter: Optional LangChain text splitter (or factory) applied before
+            embedding to chunk the text.
+        aggregation: Strategy to combine chunk embeddings when a splitter is provided.
+            Supported values: ``"mean"`` (default) and ``"first"``.
+        drop_input: Remove ``input_col`` from the resulting DataFrame when ``True``.
+
+    Raises:
+        ValueError: If ``input_col`` is missing, ``batch_size`` is not positive, the
+            embeddings model returns a length mismatch, or ``aggregation`` is invalid.
+        TypeError: When ``embeddings`` is neither an embeddings instance nor a factory
+            producing one, or when ``text_splitter`` lacks ``split_text``.
+        RuntimeError: When the embeddings model or text splitter raises an exception
+            during execution. Spark surfaces these as ``pyspark.errors.PythonException``.
+    """
+
+    if input_col not in df.columns:
+        raise ValueError(f"Column '{input_col}' not found in DataFrame")
+
+    if not isinstance(batch_size, int) or batch_size <= 0:
+        raise ValueError("batch_size must be a positive integer")
+
+    agg_mode = aggregation.lower()
+    if agg_mode not in {"mean", "first"}:
+        raise ValueError("aggregation must be one of: 'mean', 'first'")
+
+    def _resolve_embedder_factory() -> Callable[[], Any]:
+        if hasattr(embeddings, "embed_documents"):
+            return lambda: embeddings
+
+        if callable(embeddings):
+
+            def _factory():
+                model = embeddings()
+                if not hasattr(model, "embed_documents"):
+                    raise TypeError(
+                        "Embeddings factory must return an object with embed_documents()."
+                    )
+                return model
+
+            # Validate once on the driver to surface configuration issues early.
+            _factory()
+            return _factory
+
+        raise TypeError(
+            "embeddings must be a LangChain Embeddings instance or a zero-argument factory."
+        )
+
+    def _resolve_splitter_factory():
+        if text_splitter is None:
+            return None
+        if hasattr(text_splitter, "split_text"):
+            return lambda: text_splitter
+        if callable(text_splitter):
+
+            def _factory():
+                splitter_obj = text_splitter()
+                if not hasattr(splitter_obj, "split_text"):
+                    raise TypeError(
+                        "Text splitter factory must return an object with split_text()."
+                    )
+                return splitter_obj
+
+            _factory()
+            return _factory
+        raise TypeError(
+            "text_splitter must be a LangChain TextSplitter instance or a zero-argument factory."
+        )
+
+    embedder_factory = _resolve_embedder_factory()
+    splitter_factory = _resolve_splitter_factory()
+
+    embedder_cache: Dict[str, Any] = {"model": None}
+    splitter_cache: Dict[str, Any] = {"splitter": None}
+
+    def _get_embedder():
+        if embedder_cache["model"] is None:
+            embedder_cache["model"] = embedder_factory()
+        return embedder_cache["model"]
+
+    def _get_splitter():
+        if splitter_factory is None:
+            return None
+        if splitter_cache["splitter"] is None:
+            splitter_cache["splitter"] = splitter_factory()
+        return splitter_cache["splitter"]
+
+    @pandas_udf(ArrayType(FloatType()))
+    def _embed(text_series):
+        import pandas as pd
+
+        texts = ["" if value is None else str(value) for value in text_series.tolist()]
+        embedder = _get_embedder()
+        splitter = _get_splitter()
+
+        flat_texts: list[str] = []
+        counts: list[int] = []
+        for value in texts:
+            if splitter is None:
+                chunks = [value]
+            else:
+                try:
+                    chunks = splitter.split_text(value)
+                except Exception as exc:
+                    raise RuntimeError("Text splitter failed while processing input.") from exc
+                if not chunks:
+                    chunks = [value]
+
+            flat_texts.extend(chunks)
+            counts.append(len(chunks))
+
+        vectors: list[Any] = []
+        for start in range(0, len(flat_texts), batch_size):
+            chunk = flat_texts[start : start + batch_size]
+            try:
+                chunk_vectors = embedder.embed_documents(chunk)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"LangChain embeddings failed for batch starting at index {start}"
+                ) from exc
+
+            if len(chunk_vectors) != len(chunk):
+                raise ValueError(
+                    "Embeddings model returned %s vectors for %s inputs"
+                    % (len(chunk_vectors), len(chunk))
+                )
+            vectors.extend(chunk_vectors)
+
+        aggregated: list[list[float]] = []
+        cursor = 0
+
+        def _aggregate_vectors(items: Sequence[Any]) -> list[float]:
+            if not items:
+                return []
+            if agg_mode == "first":
+                return [float(x) for x in items[0]]
+
+            base = list(items[0])
+            length = len(base)
+            sums = [float(x) for x in base]
+            for vec in items[1:]:
+                if len(vec) != length:
+                    raise ValueError("Embeddings model returned vectors of differing dimensions")
+                for idx, val in enumerate(vec):
+                    sums[idx] += float(val)
+            count = float(len(items))
+            return [val / count for val in sums]
+
+        for count in counts:
+            row_vectors = vectors[cursor : cursor + count]
+            cursor += count
+            aggregated.append(_aggregate_vectors(row_vectors))
+
+        return pd.Series(aggregated)
+
+    transformed = df.withColumn(output_col, _embed(F.col(input_col)))
+    if drop_input:
+        transformed = transformed.drop(input_col)
+    return transformed
 
 
 def _get_llm_api_config(model: str) -> Tuple[str, Dict[str, str], bool]:

@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
+### Added
+- `with_langchain_embeddings` transformation to batch LangChain embedding calls into a Spark column, with optional LangChain text splitter support and configurable chunk aggregation.
+
 ### Removed
 - ADLS Gen2, Microsoft Fabric, and Databricks connectors along with their CLI commands/documentation; the IO package now focuses on REST and SPARQL sources.
 - `read_rest_api` and `read_sparql` helpers; use the Spark Data Source API directly via the new config builders and options.

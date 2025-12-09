@@ -6,6 +6,7 @@ spark-fuse is an open-source toolkit for PySpark — providing utilities, data s
 - Data sources for REST APIs (JSON payloads with pagination/retry support) and SPARQL services.
 - SparkSession helpers with sensible defaults and environment detection (Databricks/Fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, name management, casts, whitespace cleanup, resilient date parsing, calendar/time dimensions, and LLM-backed semantic column mapping.
+- LangChain-based embedding helper with optional text splitting and chunk aggregation.
 - Change-tracking helpers to capture current-only or history-preserving datasets with concise writer options.
 - Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
 - Typer-powered CLI: list data sources and preview datasets via the REST/SPARQL helpers.
@@ -121,7 +122,27 @@ Azure OpenAI pricing may differ; always confirm with your subscription's rate ca
 
 Use `dry_run=True` during development to avoid external API calls until credentials and prompts are ready. Some models only accept their default sampling configuration—use `temperature=None` to omit the parameter when required. The LLM mapper is available across spark-fuse 0.2.0 and later, including the 1.0.x releases.
 
-5) Calendar and time dimensions
+5) LangChain embeddings (with optional text splitting)
+```python
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from spark_fuse.utils.transformations import with_langchain_embeddings
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=32)
+embedded = with_langchain_embeddings(
+    df,
+    input_col="text",
+    embeddings=lambda: OpenAIEmbeddings(model="text-embedding-3-small"),
+    text_splitter=splitter,
+    output_col="embedding",
+    aggregation="mean",
+    batch_size=16,
+)
+embedded.select("text", "embedding").show(2, truncate=False)
+```
+Pass a factory when the client is not picklable; chunk long documents with a LangChain splitter and combine chunk vectors using `aggregation` (`mean` or `first`). Install `langchain-core`, `langchain-openai`, and `langchain-text-splitters` to use this helper.
+
+6) Calendar and time dimensions
 ```python
 from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
 
@@ -134,7 +155,7 @@ times.select("time", "hour", "minute").show()
 
 Try the interactive `notebooks/demos/date_time_dimensions_demo.ipynb` notebook to explore the helpers end-to-end.
 
-6) Similarity partitioning
+7) Similarity partitioning
 ```python
 from spark_fuse.similarity import (
     CosineSimilarity,

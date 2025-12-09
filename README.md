@@ -10,7 +10,7 @@ Features
 - Data sources for REST APIs (JSON payloads with pagination/retry support), SPARQL services, and Qdrant collections (read/write).
 - SparkSession helpers with sensible defaults and environment detection (databricks/fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, schema checks, and ready-made date/time dimensions (daily calendar attributes and clock buckets).
-- LLM-powered semantic column normalization that batches API calls and caches responses.
+- LLM-powered semantic column normalization and LangChain-backed embedding generation (with optional text splitters) that batch work to limit API calls.
 - Similarity partitioning toolkit with modular embedding preparation, clustering, and representative selection utilities.
 - Change-tracking helpers to write current-only or history-preserving datasets with concise options.
 - Typer-powered CLI: list data sources and preview datasets via the REST/SPARQL helpers.
@@ -128,7 +128,27 @@ write_cfg = build_qdrant_write_config(
 df.write.format(QDRANT_FORMAT).option(QDRANT_CONFIG_OPTION, json.dumps(write_cfg)).save()
 ```
 
-5) Build date/time dimensions with rich attributes
+5) Generate embeddings with LangChain (optionally split text)
+```python
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from spark_fuse.utils.transformations import with_langchain_embeddings
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=32)
+embedded = with_langchain_embeddings(
+    df,
+    input_col="text",
+    embeddings=lambda: OpenAIEmbeddings(model="text-embedding-3-small"),
+    text_splitter=splitter,
+    output_col="embedding",
+    aggregation="mean",
+    batch_size=16,
+)
+embedded.select("text", "embedding").show(3, truncate=False)
+```
+Pass a factory (`lambda: OpenAIEmbeddings(...)`) when the client cannot be pickled or needs executor-local setup. Provide a LangChain text splitter to chunk long documents before embedding; chunk vectors are combined with the chosen `aggregation` strategy (`mean` or `first`). Install `langchain-core`, `langchain-openai`, and `langchain-text-splitters` to use this helper.
+
+6) Build date/time dimensions with rich attributes
 ```python
 from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
 
@@ -140,7 +160,7 @@ time_dim.select("time", "hour", "minute").show(5)
 ```
 Check out `notebooks/demos/date_time_dimensions_demo.ipynb` for an interactive walkthrough.
 
-6) Partition embeddings and pick representatives
+7) Partition embeddings and pick representatives
 ```python
 from spark_fuse.similarity import (
     CosineSimilarity,
