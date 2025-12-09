@@ -13,11 +13,15 @@ from .. import __version__
 from ..io import (
     REST_API_CONFIG_OPTION,
     REST_API_FORMAT,
+    QDRANT_CONFIG_OPTION,
+    QDRANT_FORMAT,
     SPARQL_CONFIG_OPTION,
     SPARQL_DATA_SOURCE_NAME,
     build_rest_api_config,
+    build_qdrant_config,
     build_sparql_config,
     register_rest_data_source,
+    register_qdrant_data_source,
     register_sparql_data_source,
 )
 from ..spark import create_session
@@ -29,6 +33,7 @@ app = typer.Typer(name="spark-fuse", help="PySpark toolkit: connectors and CLI t
 _DATA_SOURCES: Dict[str, str] = {
     "rest": "spark-fuse REST data source",
     "sparql": "spark-fuse SPARQL data source",
+    "qdrant": "spark-fuse Qdrant data source",
 }
 
 
@@ -90,12 +95,16 @@ def read_cmd(
         reader = spark.read.format(REST_API_FORMAT).option(
             REST_API_CONFIG_OPTION, json.dumps(payload)
         )
-    else:
+    elif fmt == "sparql":
         register_sparql_data_source(spark)
         payload = build_sparql_config(spark, path, source_config=cfg)
         reader = spark.read.format(SPARQL_DATA_SOURCE_NAME).option(
             SPARQL_CONFIG_OPTION, json.dumps(payload)
         )
+    else:
+        register_qdrant_data_source(spark)
+        payload = build_qdrant_config(spark, path, source_config=cfg)
+        reader = spark.read.format(QDRANT_FORMAT).option(QDRANT_CONFIG_OPTION, json.dumps(payload))
 
     df = reader.load()
 

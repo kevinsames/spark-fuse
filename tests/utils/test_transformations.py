@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from pyspark.errors import PySparkException
 
 from spark_fuse.utils.transformations import (
     cast_columns,
@@ -11,6 +12,7 @@ from spark_fuse.utils.transformations import (
     rename_columns,
     split_by_date_formats,
     with_constants,
+    with_langchain_embeddings,
 )
 
 
@@ -253,3 +255,141 @@ def test_map_column_with_llm_dry_run_returns_none_for_unmatched(spark):
     assert rows[1]["fruit_mapped"] == "Apple"
     assert rows[2]["fruit_mapped"] is None
     assert rows[3]["fruit_mapped"] is None
+
+
+def test_with_langchain_embeddings_instance_adds_vectors(spark):
+    class _StubEmbeddings:
+        def embed_documents(self, texts):
+            return [[float(len(text))] for text in texts]
+
+    embedder = _StubEmbeddings()
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "text": "hi"},
+            {"id": 2, "text": None},
+        ]
+    )
+
+    result = with_langchain_embeddings(df, "text", embedder, output_col="vec")
+
+    rows = _rows_by_id(result)
+    assert rows[1]["vec"] == [2.0]
+    assert rows[2]["vec"] == [0.0]
+    assert rows[1]["text"] == "hi"
+
+
+def test_with_langchain_embeddings_factory_validates_and_drops_input(spark):
+    factory_calls = []
+
+    class _FactoryEmbeddings:
+        def __init__(self):
+            factory_calls.append("created")
+
+        def embed_documents(self, texts):
+            return [[float(len(text) + 1)] for text in texts]
+
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "text": "four"},
+        ]
+    )
+
+    result = with_langchain_embeddings(
+        df,
+        "text",
+        embeddings=lambda: _FactoryEmbeddings(),
+        output_col="vec",
+        batch_size=2,
+        drop_input=True,
+    )
+
+    rows = _rows_by_id(result)
+    assert rows[1]["vec"] == [5.0]
+    assert "text" not in rows[1]
+    assert factory_calls  # validation call on the driver triggers the factory once
+
+
+def test_with_langchain_embeddings_uses_splitter_and_mean_aggregation(spark):
+    class _StubEmbeddings:
+        def embed_documents(self, texts):
+            return [[float(len(text))] for text in texts]
+
+    class _StubSplitter:
+        def split_text(self, text):
+            return text.split(" ")
+
+    df = spark.createDataFrame([{"id": 1, "text": "hi there"}])
+
+    result = with_langchain_embeddings(
+        df,
+        "text",
+        embeddings=_StubEmbeddings(),
+        text_splitter=_StubSplitter(),
+        output_col="vec",
+        aggregation="mean",
+    )
+
+    row = result.collect()[0]
+    assert row.vec == [3.5]
+
+
+def test_with_langchain_embeddings_first_chunk_aggregation(spark):
+    class _StubEmbeddings:
+        def embed_documents(self, texts):
+            return [[float(len(text))] for text in texts]
+
+    class _StubSplitter:
+        def split_text(self, text):
+            return text.split(" ")
+
+    df = spark.createDataFrame([{"id": 1, "text": "hi there"}])
+
+    result = with_langchain_embeddings(
+        df,
+        "text",
+        embeddings=_StubEmbeddings(),
+        text_splitter=_StubSplitter(),
+        output_col="vec",
+        aggregation="first",
+    )
+
+    row = result.collect()[0]
+    assert row.vec == [2.0]
+
+
+def test_with_langchain_embeddings_length_mismatch_raises(spark):
+    class _BadEmbeddings:
+        def embed_documents(self, texts):
+            return []
+
+    df = spark.createDataFrame([{"id": 1, "text": "oops"}])
+
+    with pytest.raises(PySparkException, match="returned .* vectors"):
+        with_langchain_embeddings(df, "text", _BadEmbeddings()).collect()
+
+
+def test_with_langchain_embeddings_rejects_nonpositive_batch_size(spark):
+    class _StubEmbeddings:
+        def embed_documents(self, texts):
+            return [[0.0] for _ in texts]
+
+    df = spark.createDataFrame([{"id": 1, "text": "ok"}])
+
+    with pytest.raises(ValueError, match="batch_size"):
+        with_langchain_embeddings(df, "text", _StubEmbeddings(), batch_size=0)
+
+
+def test_with_langchain_embeddings_rejects_invalid_aggregation(spark):
+    class _StubEmbeddings:
+        def embed_documents(self, texts):
+            return [[0.0] for _ in texts]
+
+    df = spark.createDataFrame([{"id": 1, "text": "ok"}])
+
+    with pytest.raises(ValueError, match="aggregation"):
+        with_langchain_embeddings(
+            df,
+            "text",
+            _StubEmbeddings(),
+            aggregation="unknown",  # type: ignore[arg-type]
+        )
