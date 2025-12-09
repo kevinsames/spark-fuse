@@ -7,7 +7,7 @@ spark-fuse
 spark-fuse is an open-source toolkit for PySpark — providing utilities, data sources, and tools to fuse your data workflows across JSON-centric REST APIs and SPARQL endpoints.
 
 Features
-- Data sources for REST APIs (JSON payloads with pagination/retry support) and SPARQL services.
+- Data sources for REST APIs (JSON payloads with pagination/retry support), SPARQL services, and Qdrant collections (read/write).
 - SparkSession helpers with sensible defaults and environment detection (databricks/fabric/local heuristics retained for legacy jobs).
 - DataFrame utilities for previews, schema checks, and ready-made date/time dimensions (daily calendar attributes and clock buckets).
 - LLM-powered semantic column normalization that batches API calls and caches responses.
@@ -108,7 +108,27 @@ else:
     sparql_df.show(5, truncate=False)
 ```
 
-4) Build date/time dimensions with rich attributes
+4) Write to a Qdrant collection
+```python
+from spark_fuse.io import (
+    QDRANT_CONFIG_OPTION,
+    QDRANT_FORMAT,
+    build_qdrant_write_config,
+    register_qdrant_data_source,
+)
+
+register_qdrant_data_source(spark)
+write_cfg = build_qdrant_write_config(
+    "http://localhost:6333",
+    collection="pokemon",
+    id_field="id",
+    vector_field="embedding",
+    payload_fields=["name", "type"],
+)
+df.write.format(QDRANT_FORMAT).option(QDRANT_CONFIG_OPTION, json.dumps(write_cfg)).save()
+```
+
+5) Build date/time dimensions with rich attributes
 ```python
 from spark_fuse.utils.dataframe import create_date_dataframe, create_time_dataframe
 
@@ -120,7 +140,7 @@ time_dim.select("time", "hour", "minute").show(5)
 ```
 Check out `notebooks/demos/date_time_dimensions_demo.ipynb` for an interactive walkthrough.
 
-5) Partition embeddings and pick representatives
+6) Partition embeddings and pick representatives
 ```python
 from spark_fuse.similarity import (
     CosineSimilarity,
