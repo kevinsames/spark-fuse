@@ -554,6 +554,8 @@ class _QdrantWriteConfig:
     payload_fields: Optional[Sequence[str]]
     create_collection: bool
     distance: str
+    payload_format: str
+    write_method: str
 
     @staticmethod
     def from_dict(data: Mapping[str, Any]) -> "_QdrantWriteConfig":
@@ -602,6 +604,12 @@ class _QdrantWriteConfig:
 
         create_collection = bool(data.get("create_collection", False))
         distance = str(data.get("distance", "Cosine"))
+        payload_format = str(data.get("payload_format", "auto")).lower()
+        if payload_format not in {"auto", "points", "batch"}:
+            raise ValueError("payload_format must be one of: auto, points, batch")
+        write_method = str(data.get("write_method", "auto")).lower()
+        if write_method not in {"auto", "post", "put"}:
+            raise ValueError("write_method must be one of: auto, post, put")
 
         return _QdrantWriteConfig(
             endpoint=endpoint_str,
@@ -618,6 +626,8 @@ class _QdrantWriteConfig:
             payload_fields=payload_fields_value,
             create_collection=create_collection,
             distance=distance,
+            payload_format=payload_format,
+            write_method=write_method,
         )
 
 
@@ -629,12 +639,13 @@ def _perform_points_request(
     timeout: float,
     max_retries: int,
     backoff_factor: float,
+    method: str = "POST",
 ) -> Mapping[str, Any]:
     attempts = max(max_retries, 0) + 1
     last_error_detail: Optional[str] = None
     for attempt in range(attempts):
         try:
-            response = session.post(url, json=payload, timeout=timeout)
+            response = session.request(method, url, json=payload, timeout=timeout)
             if 200 <= response.status_code < 300:
                 try:
                     return response.json()
@@ -762,6 +773,28 @@ def _build_points_batch_payload(
         vectors.append(point.get("vector"))
         payloads.append(point.get("payload"))
 
+    batch_payload: Dict[str, Any] = {"ids": ids, "vectors": vectors}
+    if any(p is not None for p in payloads):
+        batch_payload["payloads"] = payloads
+
+    return {"batch": batch_payload, "wait": wait}
+
+
+def _build_flat_batch_payload(
+    batch: Sequence[Mapping[str, Any]],
+    *,
+    wait: bool,
+) -> Dict[str, Any]:
+    """Construct legacy-compatible batch payload without the 'batch' envelope."""
+
+    ids: list[Any] = []
+    vectors: list[Any] = []
+    payloads: list[Any] = []
+    for point in batch:
+        ids.append(point.get("id"))
+        vectors.append(point.get("vector"))
+        payloads.append(point.get("payload"))
+
     payload: Dict[str, Any] = {"ids": ids, "vectors": vectors, "wait": wait}
     if any(p is not None for p in payloads):
         payload["payloads"] = payloads
@@ -804,6 +837,8 @@ def _point_from_record(record: Mapping[str, Any], config: _QdrantWriteConfig) ->
     if config.id_field:
         if config.id_field not in record:
             raise ValueError(f"Missing id field '{config.id_field}' in record: {record}")
+        if record[config.id_field] is None:
+            raise ValueError(f"ID field '{config.id_field}' cannot be null for Qdrant writes")
         point["id"] = record[config.id_field]
     payload = _extract_payload_fields(
         record,
@@ -849,33 +884,77 @@ def _send_points_batch(
     batch: Sequence[Mapping[str, Any]],
     config: _QdrantWriteConfig,
 ) -> None:
-    payload = {"points": list(batch), "wait": config.wait}
-    try:
-        response = _perform_points_request(
-            session,
-            url,
-            payload,
-            timeout=config.timeout,
-            max_retries=config.max_retries,
-            backoff_factor=config.backoff_factor,
-        )
-    except RuntimeError as exc:
-        message = str(exc).lower()
-        if "missing field `ids`" in message:
-            batch_payload = _build_points_batch_payload(batch, wait=config.wait)
-            _LOGGER.warning(
-                "Qdrant rejected points payload as missing ids; retrying with batch payload"
-            )
-            response = _perform_points_request(
-                session,
-                url,
-                batch_payload,
-                timeout=config.timeout,
-                max_retries=config.max_retries,
-                backoff_factor=config.backoff_factor,
-            )
-        else:
-            raise
+    # Build payload variants
+    points_payload = {"points": list(batch), "wait": config.wait}
+    batch_payload = _build_points_batch_payload(batch, wait=config.wait)
+    flat_batch_payload = _build_flat_batch_payload(batch, wait=config.wait)
+
+    # Determine payload attempt order
+    if config.payload_format == "points":
+        payload_attempts = [("points", points_payload)]
+    elif config.payload_format == "batch":
+        payload_attempts = [
+            ("batch", batch_payload),
+            ("flat-batch", flat_batch_payload),
+            ("points", points_payload),
+        ]
+    else:  # auto
+        payload_attempts = [
+            ("points", points_payload),
+            ("batch", batch_payload),
+            ("flat-batch", flat_batch_payload),
+        ]
+
+    # Determine HTTP method order
+    if config.write_method == "post":
+        method_attempts = ["POST"]
+    elif config.write_method == "put":
+        method_attempts = ["PUT"]
+    else:  # auto
+        method_attempts = ["PUT", "POST"]
+
+    last_exc: Optional[RuntimeError] = None
+    response: Optional[Mapping[str, Any]] = None
+
+    for method in method_attempts:
+        for label, payload in payload_attempts:
+            try:
+                response = _perform_points_request(
+                    session,
+                    url,
+                    payload,
+                    timeout=config.timeout,
+                    max_retries=config.max_retries,
+                    backoff_factor=config.backoff_factor,
+                    method=method,
+                )
+                _LOGGER.info(
+                    "Qdrant write succeeded with method=%s payload_format=%s", method, label
+                )
+                break
+            except RuntimeError as exc:
+                message = str(exc).lower()
+                if "missing field `ids`" in message:
+                    _LOGGER.warning(
+                        "Qdrant rejected %s payload via %s as missing ids; trying next payload format",
+                        label,
+                        method,
+                    )
+                    last_exc = exc
+                    continue
+                last_exc = exc
+                # If method is auto, try next method; otherwise, re-raise
+                if config.write_method == "auto" and method != method_attempts[-1]:
+                    continue
+                raise
+        if response is not None:
+            break
+
+    if response is None:
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Qdrant points write failed: no payload attempt succeeded")
+
     status = response.get("status")
     if status and str(status).lower() != "ok":
         raise RuntimeError(f"Qdrant returned a non-ok status: {status}")
@@ -913,6 +992,8 @@ def write_qdrant_points(
     backoff_factor: float = 0.5,
     create_collection: bool = False,
     distance: str = "Cosine",
+    payload_format: str = "auto",
+    write_method: str = "auto",
 ) -> int:
     """Write an iterable of records to a Qdrant collection via the HTTP API."""
 
@@ -931,6 +1012,8 @@ def write_qdrant_points(
         "payload_fields": payload_fields,
         "create_collection": create_collection,
         "distance": distance,
+        "payload_format": payload_format,
+        "write_method": write_method,
     }
     config = _QdrantWriteConfig.from_dict(config_dict)
     return _write_points_iter(records, config)
@@ -952,6 +1035,8 @@ def build_qdrant_write_config(
     backoff_factor: float = 0.5,
     create_collection: bool = False,
     distance: str = "Cosine",
+    payload_format: str = "auto",
+    write_method: str = "auto",
     **overrides: Any,
 ) -> Dict[str, Any]:
     """Build the config payload used for Qdrant writes (DataFrameWriter options)."""
@@ -975,6 +1060,8 @@ def build_qdrant_write_config(
     config["payload_fields"] = payload_fields
     config["create_collection"] = create_collection
     config["distance"] = distance
+    config["payload_format"] = payload_format
+    config["write_method"] = write_method
 
     # Validate by constructing the resolved config; return raw dict for JSON serialization.
     _QdrantWriteConfig.from_dict(config)
