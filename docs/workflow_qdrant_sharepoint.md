@@ -4,13 +4,13 @@ End-to-end workflow for ingesting SharePoint documents, embedding them, and serv
 
 ```mermaid
 flowchart LR
-    SP["<img src='img/microsoft-sharepoint.svg' width='40'/><br/>SharePoint<br/>Docs/Files"] -->|Sync/Export| INGEST["<img src='img/databricks-symbol-color.svg' width='40'/><br/>Spark / Databricks LakeFlow<br/>Ingest & Enrich"]
-    INGEST --> CLEAN["<img src='img/apache-spark.svg' width='40'/><br/>Qdrant<br/>Transform / Normalize<br/>Metadata, ACLs, Dedup"]
-    CLEAN --> CHUNK["<img src='img/langchain-color.svg' width='40'/><br/>LangChain<br/>Chunking"]
-    CHUNK --> EMBED["<img src='img/OpenAI-black-monoblossom.svg' width='40'/><br/>Embedding Models<br/>Databricks / Azure OpenAI / Other"]
-    EMBED --> STORE["<img src='img/qdrant-brandmark-red.svg' width='40'/><br/>Qdrant<br/>spark-fuse-qdrant"]
-    STORE --> READ["<img src='img/apache-spark.svg' width='40'/><br/>Qdrant<br/>Spark Reads<br/>QA / Monitoring"]
-    STORE --> FRONT["<img src='img/anything-llm-light.svg' width='40'/><br/>AnythingLLM / Custom GPT<br/>RAG / Search"]
+    SP["<img src='img/microsoft-sharepoint.svg' width='40'/><br/>SharePoint<br/>Docs/Files"] -->|Sync / Export| INGEST["<img src='img/databricks-symbol-color.svg' width='40'/><br/>Spark / Databricks LakeFlow<br/>Ingest & Enrich"]
+    INGEST -->|Clean / Model| CLEAN["<img src='img/apache-spark.svg' width='40'/><br/>Transform / Normalize<br/>Metadata, ACLs, Dedup"]
+    CLEAN -->|Chunk & Annotate| CHUNK["<img src='img/langchain-color.svg' width='40'/><br/>LangChain<br/>Chunking"]
+    CHUNK -->|Embed| EMBED["<img src='img/OpenAI-black-monoblossom.svg' width='40'/><br/>Embedding Models<br/>Databricks / Azure OpenAI / Other"]
+    EMBED -->|Vectors + Payloads| STORE["<img src='img/qdrant-brandmark-red.svg' width='40'/><br/>Qdrant<br/>spark-fuse-qdrant"]
+    STORE -->|Validate / QA| READ["<img src='img/apache-spark.svg' width='40'/><br/>Spark Reads<br/>QA / Monitoring"]
+    STORE -->|Retrieve| FRONT["<img src='img/anything-llm-light.svg' width='40'/><br/>AnythingLLM / Custom GPT<br/>RAG / Search"]
     FRONT -->|Queries| STORE
 ```
 
