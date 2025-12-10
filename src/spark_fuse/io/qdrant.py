@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Dict, Iterable, Iterator, Mapping, MutableMapping, Optional, Sequence, Set
 
 import requests
@@ -97,6 +98,55 @@ def _should_include_payload(option: Any) -> bool:
     if isinstance(option, bool):
         return option
     return option is not False and option is not None
+
+
+def _coerce_float(value: Any) -> float:
+    """Convert numeric-like values to float, raising a clear error for invalid entries."""
+
+    if isinstance(value, (float, int, Decimal)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Vector entries cannot be empty strings")
+        try:
+            return float(stripped)
+        except ValueError as exc:
+            raise TypeError(f"Vector entries must be numeric; got string '{value}'") from exc
+    if hasattr(value, "item"):  # numpy scalar
+        try:
+            return float(value)
+        except Exception:
+            pass
+    raise TypeError(f"Vector entries must be numeric; got {type(value).__name__}: {value}")
+
+
+def _normalize_vector_value(vector: Any) -> Any:
+    """Normalize vectors for Qdrant: sequences of numbers or mapping of named vectors."""
+
+    # Spark MLlib DenseVector / SparseVector expose toArray()
+    if hasattr(vector, "toArray"):
+        try:
+            vector = vector.toArray().tolist()
+        except Exception:
+            vector = vector.toArray()
+    elif hasattr(vector, "tolist") and not isinstance(vector, (str, bytes, bytearray)):
+        # numpy arrays, pandas objects
+        try:
+            vector = vector.tolist()
+        except Exception:
+            pass
+
+    if isinstance(vector, Mapping):
+        return {str(k): _normalize_vector_value(v) for k, v in vector.items()}
+
+    if isinstance(vector, Sequence) and not isinstance(vector, (str, bytes, bytearray)):
+        return [_coerce_float(v) for v in vector]
+
+    raise TypeError(
+        "Vector must be a sequence of numbers (or mapping of named vectors); "
+        f"got {type(vector).__name__}"
+    )
 
 
 def _perform_scroll_request(
@@ -502,6 +552,8 @@ class _QdrantWriteConfig:
     id_field: Optional[str]
     vector_field: str
     payload_fields: Optional[Sequence[str]]
+    create_collection: bool
+    distance: str
 
     @staticmethod
     def from_dict(data: Mapping[str, Any]) -> "_QdrantWriteConfig":
@@ -548,6 +600,9 @@ class _QdrantWriteConfig:
             else:
                 raise TypeError("payload_fields must be a string or sequence when provided")
 
+        create_collection = bool(data.get("create_collection", False))
+        distance = str(data.get("distance", "Cosine"))
+
         return _QdrantWriteConfig(
             endpoint=endpoint_str,
             collection=collection,
@@ -561,6 +616,8 @@ class _QdrantWriteConfig:
             id_field=id_field,
             vector_field=vector_field,
             payload_fields=payload_fields_value,
+            create_collection=create_collection,
+            distance=distance,
         )
 
 
@@ -574,6 +631,7 @@ def _perform_points_request(
     backoff_factor: float,
 ) -> Mapping[str, Any]:
     attempts = max(max_retries, 0) + 1
+    last_error_detail: Optional[str] = None
     for attempt in range(attempts):
         try:
             response = session.post(url, json=payload, timeout=timeout)
@@ -582,6 +640,11 @@ def _perform_points_request(
                     return response.json()
                 except ValueError as exc:
                     raise ValueError(f"Failed to decode Qdrant response JSON: {exc}") from exc
+            try:
+                body_preview = response.text[:500]
+            except Exception:
+                body_preview = "<response body unavailable>"
+            last_error_detail = f"HTTP {response.status_code}; body preview: {body_preview}"
             _LOGGER.warning(
                 "Qdrant points write returned HTTP %s for %s (attempt %s/%s)",
                 response.status_code,
@@ -590,6 +653,7 @@ def _perform_points_request(
                 attempts,
             )
         except requests.RequestException as exc:
+            last_error_detail = str(exc)
             _LOGGER.warning(
                 "Qdrant points request failed on attempt %s/%s: %s",
                 attempt + 1,
@@ -600,7 +664,108 @@ def _perform_points_request(
             delay = backoff_factor * (2**attempt)
             if delay > 0:
                 time.sleep(delay)
-    raise RuntimeError(f"Qdrant points write failed after {attempts} attempts for {url}")
+    error_message = f"Qdrant points write failed after {attempts} attempts for {url}"
+    if last_error_detail:
+        error_message = f"{error_message} (last error: {last_error_detail})"
+    raise RuntimeError(error_message)
+
+
+def _perform_collection_request(
+    session: requests.Session,
+    method: str,
+    url: str,
+    *,
+    json_body: Optional[Mapping[str, Any]] = None,
+    timeout: float,
+) -> requests.Response:
+    response = session.request(method, url, json=json_body, timeout=timeout)
+    return response
+
+
+def _vectors_payload_from_point(point: Mapping[str, Any], *, distance: str) -> Mapping[str, Any]:
+    vector = point.get("vector")
+    if isinstance(vector, Mapping):
+        vectors: Dict[str, Any] = {}
+        for name, value in vector.items():
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+                raise TypeError(
+                    "Named vectors must be sequences of numbers; "
+                    f"got {type(value).__name__} for '{name}'"
+                )
+            if len(value) == 0:
+                raise ValueError(f"Named vector '{name}' cannot be empty")
+            vectors[str(name)] = {"size": len(value), "distance": distance}
+        if not vectors:
+            raise ValueError("No named vectors provided for collection creation")
+        return vectors
+
+    if isinstance(vector, Sequence) and not isinstance(vector, (str, bytes, bytearray)):
+        if len(vector) == 0:
+            raise ValueError("Vector cannot be empty for collection creation")
+        return {"size": len(vector), "distance": distance}
+
+    raise TypeError("Unable to derive vectors schema from provided point")
+
+
+def _ensure_collection_exists(
+    session: requests.Session,
+    config: _QdrantWriteConfig,
+    sample_point: Mapping[str, Any],
+) -> None:
+    if not config.create_collection:
+        return
+
+    url = f"{config.endpoint}/collections/{config.collection}"
+    response = _perform_collection_request(session, "GET", url, timeout=config.timeout)
+    if response.status_code < 300:
+        return
+    if response.status_code != 404:
+        body = response.text[:200] if response.text else ""
+        raise RuntimeError(
+            f"Failed to check Qdrant collection '{config.collection}': "
+            f"HTTP {response.status_code} {body}"
+        )
+
+    vectors_payload = _vectors_payload_from_point(sample_point, distance=config.distance)
+    create_payload: Dict[str, Any] = {"vectors": vectors_payload}
+    _LOGGER.info(
+        "Creating Qdrant collection '%s' with vectors schema derived from first record",
+        config.collection,
+    )
+    response = _perform_collection_request(
+        session,
+        "PUT",
+        url,
+        json_body=create_payload,
+        timeout=config.timeout,
+    )
+    if not (200 <= response.status_code < 300):
+        body = response.text[:500] if response.text else ""
+        raise RuntimeError(
+            f"Failed to create Qdrant collection '{config.collection}': "
+            f"HTTP {response.status_code} {body}"
+        )
+
+
+def _build_points_batch_payload(
+    batch: Sequence[Mapping[str, Any]],
+    *,
+    wait: bool,
+) -> Dict[str, Any]:
+    """Construct the Qdrant PointsBatch payload (ids/vectors/payloads arrays)."""
+
+    ids: list[Any] = []
+    vectors: list[Any] = []
+    payloads: list[Any] = []
+    for point in batch:
+        ids.append(point.get("id"))
+        vectors.append(point.get("vector"))
+        payloads.append(point.get("payload"))
+
+    payload: Dict[str, Any] = {"ids": ids, "vectors": vectors, "wait": wait}
+    if any(p is not None for p in payloads):
+        payload["payloads"] = payloads
+    return payload
 
 
 def _extract_payload_fields(
@@ -627,9 +792,14 @@ def _extract_payload_fields(
 
 
 def _point_from_record(record: Mapping[str, Any], config: _QdrantWriteConfig) -> Dict[str, Any]:
-    vector = record.get(config.vector_field)
-    if vector is None:
+    vector_raw = record.get(config.vector_field)
+    if vector_raw is None:
         raise ValueError(f"Missing vector field '{config.vector_field}' in record: {record}")
+    try:
+        vector = _normalize_vector_value(vector_raw)
+    except Exception as exc:
+        raise TypeError(f"Failed to normalize vector field '{config.vector_field}': {exc}") from exc
+
     point: Dict[str, Any] = {"vector": vector}
     if config.id_field:
         if config.id_field not in record:
@@ -654,9 +824,13 @@ def _write_points_iter(records: Iterable[Mapping[str, Any]], config: _QdrantWrit
     url = _points_url(config.endpoint, config.collection)
     batch: list[Dict[str, Any]] = []
     total = 0
+    collection_checked = False
     try:
         for record in records:
             batch.append(_point_from_record(record, config))
+            if config.create_collection and not collection_checked:
+                _ensure_collection_exists(session, config, batch[-1])
+                collection_checked = True
             if len(batch) >= config.batch_size:
                 _send_points_batch(session, url, batch, config)
                 total += len(batch)
@@ -676,14 +850,32 @@ def _send_points_batch(
     config: _QdrantWriteConfig,
 ) -> None:
     payload = {"points": list(batch), "wait": config.wait}
-    response = _perform_points_request(
-        session,
-        url,
-        payload,
-        timeout=config.timeout,
-        max_retries=config.max_retries,
-        backoff_factor=config.backoff_factor,
-    )
+    try:
+        response = _perform_points_request(
+            session,
+            url,
+            payload,
+            timeout=config.timeout,
+            max_retries=config.max_retries,
+            backoff_factor=config.backoff_factor,
+        )
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        if "missing field `ids`" in message:
+            batch_payload = _build_points_batch_payload(batch, wait=config.wait)
+            _LOGGER.warning(
+                "Qdrant rejected points payload as missing ids; retrying with batch payload"
+            )
+            response = _perform_points_request(
+                session,
+                url,
+                batch_payload,
+                timeout=config.timeout,
+                max_retries=config.max_retries,
+                backoff_factor=config.backoff_factor,
+            )
+        else:
+            raise
     status = response.get("status")
     if status and str(status).lower() != "ok":
         raise RuntimeError(f"Qdrant returned a non-ok status: {status}")
@@ -719,6 +911,8 @@ def write_qdrant_points(
     timeout: float = 30.0,
     max_retries: int = 3,
     backoff_factor: float = 0.5,
+    create_collection: bool = False,
+    distance: str = "Cosine",
 ) -> int:
     """Write an iterable of records to a Qdrant collection via the HTTP API."""
 
@@ -735,6 +929,8 @@ def write_qdrant_points(
         "id_field": id_field,
         "vector_field": vector_field,
         "payload_fields": payload_fields,
+        "create_collection": create_collection,
+        "distance": distance,
     }
     config = _QdrantWriteConfig.from_dict(config_dict)
     return _write_points_iter(records, config)
@@ -754,6 +950,8 @@ def build_qdrant_write_config(
     timeout: float = 30.0,
     max_retries: int = 3,
     backoff_factor: float = 0.5,
+    create_collection: bool = False,
+    distance: str = "Cosine",
     **overrides: Any,
 ) -> Dict[str, Any]:
     """Build the config payload used for Qdrant writes (DataFrameWriter options)."""
@@ -775,6 +973,8 @@ def build_qdrant_write_config(
     config["id_field"] = id_field
     config["vector_field"] = vector_field
     config["payload_fields"] = payload_fields
+    config["create_collection"] = create_collection
+    config["distance"] = distance
 
     # Validate by constructing the resolved config; return raw dict for JSON serialization.
     _QdrantWriteConfig.from_dict(config)
