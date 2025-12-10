@@ -109,6 +109,8 @@ set `payload_fields` to restrict which columns become payload.
 | `payload_fields` | string \| sequence, optional | If set, only these columns are sent as payload. When omitted, all non-ID and non-vector columns become payload. |
 | `create_collection` | bool, `False` | When true, auto-creates the collection (using the first point to infer vector size) if a GET on the collection returns 404. |
 | `distance` | string, `"Cosine"` | Distance metric to use when creating a collection automatically. |
+| `payload_format` | string, `"auto"` | Payload encoding for writes: `points` (list-of-points), `batch` (ids/vectors/payloads arrays), or `auto` (try points then fall back to batch on 400 “missing ids”). |
+| `write_method` | string, `"auto"` | HTTP method for writes: `put`, `post`, or `auto` (tries PUT then POST). |
 
 ## API Reference
 
