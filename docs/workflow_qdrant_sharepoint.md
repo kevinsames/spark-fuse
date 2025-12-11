@@ -14,6 +14,26 @@ flowchart LR
     FRONT -->|Queries| STORE
 ```
 
+## Why this workflow is useful
+- Creates a single, repeatable path from SharePoint files to GPT-ready retrieval so teams avoid bespoke glue code.
+- Uses Spark/LakeFlow for scale, retries, and lineage, reducing ingestion drift and manual re-runs.
+- Preserves SharePoint metadata and ACL signals so downstream RAG can stay permission-aware.
+- Keeps chunking and embeddings configurable (provider-agnostic) while storing vectors in an open, portable Qdrant collection.
+- Lets QA and monitoring run off the same Spark reads used for backfills, catching schema or quality regressions early.
+
+## Multi-vector/RAG platform stance
+- Single ingest and enrichment path that can target multiple vector stores (Qdrant, OpenSearch vectors, Pinecone, Milvus, etc.) without refactoring pipelines.
+- Provider-agnostic embeddings and chunking so teams can swap models or vendors as quality/cost/latency needs change.
+- Semantic search, Q&A, and analytics share the same vectorized lake with governance and lineage intact even when retrieval backends change.
+- Pluggable fronts (custom GPTs, copilots, dashboards) ride on the same platform rather than bespoke integrations per product.
+
+## Typical needs and use cases
+- Enterprise knowledge search and Q&A across SharePoint sites with access controls respected at query time.
+- Helpdesk or field-support copilots that retrieve runbooks, SOPs, and playbooks without copying data into new silos.
+- Compliance, eDiscovery, and audit prep that require fast surfacing of controlled documents with full metadata context.
+- Project onboarding or handoff copilots that summarize prior decisions, designs, and docs from relevant SharePoint spaces.
+- Migrations or divestitures that need content discovery and similarity search to group, dedupe, or prioritize archives.
+
 ## 1) Ingest & Transform (SharePoint → Spark / LakeFlow)
 - Connect to SharePoint libraries; pull PDFs, DOCX, HTML, etc.
 - Normalize content and metadata (titles, authors, paths, ACLs), dedupe, and clean text.
