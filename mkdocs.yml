@@ -23,6 +23,7 @@ markdown_extensions:
   - codehilite
 plugins:
   - search
+  - mermaid2
   - mkdocstrings:
       handlers:
         python:
