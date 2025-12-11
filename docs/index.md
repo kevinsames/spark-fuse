@@ -176,7 +176,7 @@ clustered = pipeline.run(df)
 representatives = pipeline.select_representatives(clustered)
 ```
 
-The `docs/similarity_partitioning_demo.md` guide walks through the workflow, and `notebooks/demos/similarity_pipeline_demo.ipynb` provides an interactive companion.
+The `docs/guides/similarity_partitioning_demo.md` guide walks through the workflow, and `notebooks/demos/similarity_pipeline_demo.ipynb` provides an interactive companion.
 
 ## CLI
 - `spark-fuse datasources`

@@ -180,7 +180,7 @@ pipeline = SimilarityPipeline(
 clustered = pipeline.run(df)
 representatives = pipeline.select_representatives(clustered)
 ```
-See `docs/similarity_partitioning_demo.md` for a walkthrough and `notebooks/demos/similarity_pipeline_demo.ipynb` for an
+See `docs/guides/similarity_partitioning_demo.md` for a walkthrough and `notebooks/demos/similarity_pipeline_demo.ipynb` for an
 interactive companion.
 
 LLM-Powered Column Mapping
