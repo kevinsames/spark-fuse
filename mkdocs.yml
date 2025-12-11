@@ -40,27 +40,29 @@ plugins:
 nav:
   - Home: index.md
   - Getting Started:
-      - Install: install.md
+      - Install: getting-started/install.md
   - Guides:
-      - CLI: cli.md
-      - Date & Time Dimensions: date_time_dimensions.md
-      - LLM Mapping Demo: llm_mapping_demo.md
-      - REST API Reader Demo: rest_api_reader_demo.md
-      - SPARQL Reader Demo: sparql_reader_demo.md
-      - Split by Date Formats Demo: split_by_date_formats_demo.md
-      - Similarity Partitioning Demo: similarity_partitioning_demo.md
-      - Change Tracking Demo: change_tracking_demo.md
+      - CLI: guides/cli.md
+      - Date & Time Dimensions: guides/date_time_dimensions.md
+      - LLM Mapping Demo: guides/llm_mapping_demo.md
+      - REST API Reader Demo: guides/rest_api_reader_demo.md
+      - SPARQL Reader Demo: guides/sparql_reader_demo.md
+      - Split by Date Formats Demo: guides/split_by_date_formats_demo.md
+      - Similarity Partitioning Demo: guides/similarity_partitioning_demo.md
+      - Change Tracking Demo: guides/change_tracking_demo.md
+  - Use Cases:
+      - SharePoint to Qdrant RAG: use-cases/workflow_qdrant_sharepoint.md
   - Project:
-      - Contributing: contributing.md
-      - Code of Conduct: code-of-conduct.md
-      - Security: security.md
-      - Governance: governance.md
-      - Changelog: changelog.md
-      - Release v1.0.2: releases/v1.0.2.md
-      - Release v1.0.1: releases/v1.0.1.md
-      - Release v1.0.0: releases/v1.0.0.md
-      - Maintainers: maintainers.md
-      - Authors: authors.md
+      - Contributing: project/contributing.md
+      - Code of Conduct: project/code-of-conduct.md
+      - Security: project/security.md
+      - Governance: project/governance.md
+      - Changelog: project/changelog.md
+      - Release v1.0.2: project/releases/v1.0.2.md
+      - Release v1.0.1: project/releases/v1.0.1.md
+      - Release v1.0.0: project/releases/v1.0.0.md
+      - Maintainers: project/maintainers.md
+      - Authors: project/authors.md
   - API Reference:
       - spark_fuse.spark: api/spark.md
       - IO Core: api/io.md
