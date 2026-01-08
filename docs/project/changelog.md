@@ -13,6 +13,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - CLI `datasources` command replaces `connectors`, and `spark-fuse read` now requires `--format rest|sparql` to select the desired data source.
 - SCD helpers have been fully renamed to the change-tracking API (`spark_fuse.utils.change_tracking`) with `change_tracking_mode=current_only|track_history` and the new ``DataFrame.write.change_tracking`` sugar.
 
+## [1.0.3] - 2026-01-08
+### Added
+- REST API reader token pagination for cursor-style query params (for example, `after` tokens) with nested pagination fields.
+
+### Documentation
+- REST API reader demo now includes a token pagination example for HubSpot marketing events.
+
 ## [1.0.2] - 2025-12-01
 ### Added
 - Progress helpers (`create_progress_tracker`, `log_progress`) now live in `spark_fuse.utils.logging` to standardize elapsed-time logging across notebooks.
@@ -187,7 +194,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/kevinsames/spark-fuse/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/kevinsames/spark-fuse/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/kevinsames/spark-fuse/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/kevinsames/spark-fuse/compare/v0.3.2...v0.4.0

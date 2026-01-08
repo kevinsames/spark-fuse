@@ -192,11 +192,7 @@ def _fetch_with_response_pagination(
     response_payload_field: Optional[str],
 ) -> Iterator[Dict[str, Any]]:
     pagination = item["pagination"]
-    next_field = pagination.get("field", "next")
-    if isinstance(next_field, (list, tuple)):
-        next_path = [str(part) for part in next_field]
-    else:
-        next_path = [str(next_field)]
+    next_path = _as_pagination_field(pagination.get("field"))
     max_pages = pagination.get("max_pages")
     current_url = item["url"]
     page = 0
@@ -222,7 +218,7 @@ def _fetch_with_response_pagination(
             if response_value is not None and response_payload_field:
                 row[response_payload_field] = response_value
             yield row
-        next_value = _get_nested_value(payload, next_path) if pagination.get("field") else None
+        next_value = _get_nested_value(payload, next_path) if next_path else None
         if not next_value:
             break
         if isinstance(next_value, str):
@@ -232,6 +228,61 @@ def _fetch_with_response_pagination(
                 current_url = urljoin(current_url, next_value)
         else:
             current_url = None
+
+
+def _fetch_with_token_pagination(
+    session: requests.Session,
+    item: Mapping[str, Any],
+    *,
+    timeout: float,
+    max_retries: int,
+    backoff_factor: float,
+    request_kwargs: Mapping[str, Any],
+    request_type: str,
+    records_field: Optional[Sequence[str]],
+    include_response_payload: bool,
+    response_payload_field: Optional[str],
+) -> Iterator[Dict[str, Any]]:
+    pagination = item["pagination"]
+    token_param = item["token_param"]
+    base_url = item["url"]
+    base_params = dict(item.get("params") or {})
+    token_path = _as_pagination_field(pagination.get("field"))
+    max_pages = pagination.get("max_pages")
+    token_value = base_params.get(token_param)
+    page = 0
+    while True:
+        page += 1
+        if max_pages is not None and page > max_pages:
+            break
+        params = dict(base_params)
+        if token_value is not None and token_value != "":
+            params[token_param] = token_value
+        else:
+            params.pop(token_param, None)
+        current_url = _merge_query_params(base_url, params)
+        payload = _perform_request(
+            session,
+            current_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            backoff_factor=backoff_factor,
+            request_type=request_type,
+            request_kwargs=request_kwargs,
+        )
+        if payload is None:
+            break
+        response_value: Optional[Any] = payload if include_response_payload else None
+        records = _extract_records(payload, records_field)
+        for record in records:
+            row = _ensure_dict(record)
+            if response_value is not None and response_payload_field:
+                row[response_payload_field] = response_value
+            yield row
+        next_token = _get_nested_value(payload, token_path) if token_path else None
+        if next_token is None or next_token == "":
+            break
+        token_value = next_token
 
 
 def _normalize_jsonable(value: Any) -> Any:
@@ -255,6 +306,19 @@ def _as_records_field(value: Optional[Any]) -> Optional[List[str]]:
     if isinstance(value, Sequence):
         return [str(part) for part in value]
     raise TypeError("records_field must be a string or sequence of path segments")
+
+
+def _as_pagination_field(value: Optional[Any]) -> Optional[List[str]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        return trimmed.split(".")
+    if isinstance(value, Sequence):
+        return [str(part) for part in value]
+    return [str(value)]
 
 
 @dataclass
@@ -351,6 +415,31 @@ def _prepare_work_items(
                 page_params[page_param] = value
                 items.append({"mode": "single", "url": _merge_query_params(base_url, page_params)})
             return items
+        if mode in {"token", "cursor"}:
+            token_param = config.pagination.get("param")
+            if not token_param:
+                raise ValueError("token pagination requires 'param'")
+            field_value = config.pagination.get("field")
+            if field_value is None or (isinstance(field_value, str) and not field_value.strip()):
+                raise ValueError("token pagination requires 'field'")
+            extra_params = dict(config.pagination.get("extra_params", {}))
+            page_size_param = config.pagination.get("page_size_param")
+            if page_size_param and "page_size" in config.pagination:
+                extra_params[page_size_param] = config.pagination["page_size"]
+            base_params = dict(config.params)
+            base_params.update(extra_params)
+            start_value = config.pagination.get("start")
+            if start_value is not None:
+                base_params[token_param] = start_value
+            return [
+                {
+                    "mode": "token",
+                    "url": base_url,
+                    "params": base_params,
+                    "pagination": config.pagination,
+                    "token_param": str(token_param),
+                }
+            ]
         if mode in {"response", "link"}:
             return [
                 {
@@ -398,6 +487,19 @@ def _iter_records_for_items(
                 )
             elif mode == "response":
                 yield from _fetch_with_response_pagination(
+                    session,
+                    item,
+                    timeout=config.timeout,
+                    max_retries=config.max_retries,
+                    backoff_factor=config.backoff_factor,
+                    request_kwargs=config.request_kwargs,
+                    request_type=config.request_type,
+                    records_field=config.records_field,
+                    include_response_payload=config.include_response_payload,
+                    response_payload_field=config.response_payload_field,
+                )
+            elif mode == "token":
+                yield from _fetch_with_token_pagination(
                     session,
                     item,
                     timeout=config.timeout,

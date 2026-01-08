@@ -64,6 +64,7 @@ nav:
       - Security: project/security.md
       - Governance: project/governance.md
       - Changelog: project/changelog.md
+      - Release v1.0.3: project/releases/v1.0.3.md
       - Release v1.0.2: project/releases/v1.0.2.md
       - Release v1.0.1: project/releases/v1.0.1.md
       - Release v1.0.0: project/releases/v1.0.0.md

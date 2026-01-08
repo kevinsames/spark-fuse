@@ -34,9 +34,23 @@ pokemon = (
 pokemon.select("name").show(5)
 ```
 
+Token pagination example (e.g., APIs that return `paging.next.after`):
+
+```python
+payload = build_rest_api_config(
+    spark,
+    "https://api.hubapi.com/marketing/v3/marketing-events/",
+    source_config={
+        "records_field": "results",
+        "params": {"limit": 100},
+        "pagination": {"mode": "token", "param": "after", "field": "paging.next.after"},
+    },
+)
+```
+
 Highlights:
 
-- Cursor-based (`response`) and offset-based (`token`) pagination.
+- Cursor-based (`response`) and token-based (`token`) pagination.
 - Optional request headers and query parameters.
 - Issue `GET` or `POST` calls by setting `request_type`, attaching payloads with `request_body`.
 - Built-in retry/backoff controls.
