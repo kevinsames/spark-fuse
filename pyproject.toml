@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spark-fuse"
-version = "1.0.2"
+version = "1.0.3"
 description = "Open-source PySpark toolkit with data sources for REST APIs and SPARQL endpoints."
 readme = "README.md"
 license = { file = "LICENSE" }

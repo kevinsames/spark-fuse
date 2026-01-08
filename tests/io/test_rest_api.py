@@ -162,6 +162,51 @@ def test_rest_api_reader_response_pagination_next_links(spark):
 
 
 @pytest.mark.usefixtures("spark")
+def test_rest_api_reader_token_pagination(spark):
+    server_responses: Dict[str, Any] = {}
+    server, server_base = _start_mock_server(server_responses)
+    try:
+        first_path = "/events?limit=2"
+        second_path = "/events?limit=2&after=2"
+        server_responses[first_path] = {
+            "results": [{"id": 1}, {"id": 2}],
+            "paging": {"next": {"after": 2}},
+        }
+        server_responses[second_path] = {
+            "results": [{"id": 3}],
+            "paging": {},
+        }
+
+        config = build_rest_api_config(
+            spark,
+            f"{server_base}/events",
+            source_config={
+                "params": {"limit": 2},
+                "records_field": "results",
+                "pagination": {
+                    "mode": "token",
+                    "param": "after",
+                    "field": "paging.next.after",
+                    "max_pages": 3,
+                },
+                "parallelism": 1,
+            },
+        )
+        register_rest_data_source(spark)
+        df = (
+            spark.read.format(REST_API_FORMAT)
+            .option(REST_API_CONFIG_OPTION, json.dumps(config))
+            .load()
+        )
+
+        ids = sorted(row.id for row in df.select("id").collect())
+        assert ids == [1, 2, 3]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.usefixtures("spark")
 def test_rest_api_reader_post_request(spark):
     request_log: list[dict[str, Any]] = []
     server_responses: Dict[str | ResponseKey, Any] = {}
