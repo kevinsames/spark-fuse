@@ -29,8 +29,7 @@ jobs:
           pip install -e ".[dev]"
       - name: Pin Spark runtime for tests
         run: |
-          python - <<'PY'
-          import os
+          python - <<'PY' | tee -a "$GITHUB_ENV"
           import pathlib
           import re
           import pyspark
@@ -55,11 +54,6 @@ jobs:
           major_minor = ".".join(spark_version.split(".")[:2])
           delta_map = {"3.3": "2.3.0", "3.4": "2.4.0", "3.5": "3.2.0", "4.0": "4.0.0"}
           delta_version = delta_map.get(major_minor, "4.0.0")
-
-          with open(os.environ["GITHUB_ENV"], "a") as handle:
-              handle.write(f"SPARK_HOME={spark_home}\\n")
-              handle.write(f"SPARK_FUSE_DELTA_SCALA_SUFFIX={scala_suffix}\\n")
-              handle.write(f"SPARK_FUSE_DELTA_VERSION={delta_version}\\n")
 
           print(f"SPARK_HOME={spark_home}")
           print(f"SPARK_FUSE_DELTA_SCALA_SUFFIX={scala_suffix}")
