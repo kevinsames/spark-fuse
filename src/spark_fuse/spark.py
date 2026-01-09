@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Dict, Optional
@@ -27,17 +28,49 @@ DEFAULT_SCALA_SUFFIX = "2.13"
 LEGACY_SCALA_SUFFIX = "2.12"
 
 
+_SCALA_VERSION_RE = re.compile(r"(\\d+\\.\\d+)")
+
+
+def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
+    candidates = []
+    module_file = getattr(pyspark_module, "__file__", None)
+    if module_file:
+        candidates.append(Path(module_file).resolve().parent / "jars")
+    module_paths = getattr(pyspark_module, "__path__", None)
+    if module_paths:
+        for path in module_paths:
+            candidates.append(Path(path).resolve() / "jars")
+    spark_home = os.environ.get("SPARK_HOME")
+    if spark_home:
+        candidates.append(Path(spark_home).resolve() / "jars")
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _extract_scala_binary(jar_name: str) -> Optional[str]:
+    match = _SCALA_VERSION_RE.search(jar_name)
+    return match.group(1) if match else None
+
+
 def _detect_scala_binary(pyspark_module) -> Optional[str]:
-    """Best-effort Scala binary detection based on bundled jars."""
+    """Best-effort Scala binary detection based on Spark jars."""
 
     try:
-        jars_dir = Path(pyspark_module.__file__).resolve().parent / "jars"
-        matches = sorted(jars_dir.glob("scala-library-*.jar"))
-        if not matches:
+        jars_dir = _find_spark_jars_dir(pyspark_module)
+        if not jars_dir:
             return None
-        version = matches[0].name.split("scala-library-")[-1].split(".jar")[0]
-        major_minor = version.split(".")[:2]
-        return ".".join(major_minor)
+
+        # Prefer spark-core to reflect the actual Spark build's Scala binary.
+        for pattern in ("spark-core_*.jar", "scala-library-*.jar"):
+            matches = sorted(jars_dir.glob(pattern))
+            if not matches:
+                continue
+            scala_binary = _extract_scala_binary(matches[0].name)
+            if scala_binary:
+                return scala_binary
+        return None
     except Exception:
         return None
 
