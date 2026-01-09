@@ -31,6 +31,7 @@ LEGACY_SCALA_SUFFIX = "2.12"
 _SCALA_VERSION_RE = re.compile(r"(\\d+\\.\\d+)")
 _SCALA_SUFFIX_RE = re.compile(r"_(\\d+\\.\\d+)")
 _SCALA_LIBRARY_RE = re.compile(r"scala-library-(\\d+\\.\\d+)")
+_SPARK_CORE_RE = re.compile(r"spark-core_(\\d+\\.\\d+)-(\\d+\\.\\d+(?:\\.\\d+)?)\\.jar")
 
 
 def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
@@ -59,6 +60,18 @@ def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
     return None
 
 
+def _detect_delta_package_version() -> Optional[str]:
+    try:
+        from importlib import metadata
+    except ImportError:  # pragma: no cover - Python <3.8
+        return None
+
+    try:
+        return metadata.version("delta-spark")
+    except metadata.PackageNotFoundError:
+        return None
+
+
 def _extract_scala_binary(jar_name: str) -> Optional[str]:
     for pattern in (_SCALA_SUFFIX_RE, _SCALA_LIBRARY_RE, _SCALA_VERSION_RE):
         match = pattern.search(jar_name)
@@ -83,6 +96,22 @@ def _detect_scala_binary(pyspark_module) -> Optional[str]:
             scala_binary = _extract_scala_binary(matches[0].name)
             if scala_binary:
                 return scala_binary
+        return None
+    except Exception:
+        return None
+
+
+def _detect_spark_version(pyspark_module) -> Optional[str]:
+    """Best-effort Spark version detection from bundled jars."""
+
+    try:
+        jars_dir = _find_spark_jars_dir(pyspark_module)
+        if not jars_dir:
+            return None
+        for jar in sorted(jars_dir.glob("spark-core_*.jar")):
+            match = _SPARK_CORE_RE.match(jar.name)
+            if match:
+                return match.group(2)
         return None
     except Exception:
         return None
@@ -122,7 +151,7 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
         try:
             import pyspark  # type: ignore
 
-            ver = pyspark.__version__
+            ver = _detect_spark_version(pyspark) or pyspark.__version__
             major, minor, *_ = ver.split(".")
             key = f"{major}.{minor}"
             try:
@@ -135,7 +164,13 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
             default_scala = DEFAULT_SCALA_SUFFIX if modern_runtime else LEGACY_SCALA_SUFFIX
 
             if not delta_ver:
-                delta_ver = DELTA_PYSPARK_COMPAT.get(key, default_delta)
+                if modern_runtime:
+                    # Keep Delta aligned to the exact Spark runtime for 4.x patch releases.
+                    delta_ver = ver
+                else:
+                    delta_ver = _detect_delta_package_version() or DELTA_PYSPARK_COMPAT.get(
+                        key, default_delta
+                    )
 
             if not scala_suffix:
                 detected_scala = _detect_scala_binary(pyspark)
