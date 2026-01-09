@@ -31,6 +31,7 @@ LEGACY_SCALA_SUFFIX = "2.12"
 _SCALA_VERSION_RE = re.compile(r"(\\d+\\.\\d+)")
 _SCALA_SUFFIX_RE = re.compile(r"_(\\d+\\.\\d+)")
 _SCALA_LIBRARY_RE = re.compile(r"scala-library-(\\d+\\.\\d+)")
+_SPARK_CORE_RE = re.compile(r"spark-core_(\\d+\\.\\d+)-(\\d+\\.\\d+(?:\\.\\d+)?)\\.jar")
 
 
 def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
@@ -88,6 +89,22 @@ def _detect_scala_binary(pyspark_module) -> Optional[str]:
         return None
 
 
+def _detect_spark_version(pyspark_module) -> Optional[str]:
+    """Best-effort Spark version detection from bundled jars."""
+
+    try:
+        jars_dir = _find_spark_jars_dir(pyspark_module)
+        if not jars_dir:
+            return None
+        for jar in sorted(jars_dir.glob("spark-core_*.jar")):
+            match = _SPARK_CORE_RE.match(jar.name)
+            if match:
+                return match.group(2)
+        return None
+    except Exception:
+        return None
+
+
 def detect_environment() -> str:
     """Detect a likely runtime environment: databricks, fabric, or local.
 
@@ -122,7 +139,7 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
         try:
             import pyspark  # type: ignore
 
-            ver = pyspark.__version__
+            ver = _detect_spark_version(pyspark) or pyspark.__version__
             major, minor, *_ = ver.split(".")
             key = f"{major}.{minor}"
             try:
