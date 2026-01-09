@@ -29,10 +29,23 @@ LEGACY_SCALA_SUFFIX = "2.12"
 
 
 _SCALA_VERSION_RE = re.compile(r"(\\d+\\.\\d+)")
+_SCALA_SUFFIX_RE = re.compile(r"_(\\d+\\.\\d+)")
+_SCALA_LIBRARY_RE = re.compile(r"scala-library-(\\d+\\.\\d+)")
 
 
 def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
+    spark_home = os.environ.get("SPARK_HOME")
     candidates = []
+    if spark_home:
+        candidates.append(Path(spark_home).resolve() / "jars")
+    try:
+        from pyspark.find_spark_home import _find_spark_home  # type: ignore
+
+        detected_home = _find_spark_home()
+        if detected_home:
+            candidates.append(Path(detected_home).resolve() / "jars")
+    except Exception:
+        pass
     module_file = getattr(pyspark_module, "__file__", None)
     if module_file:
         candidates.append(Path(module_file).resolve().parent / "jars")
@@ -40,9 +53,6 @@ def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
     if module_paths:
         for path in module_paths:
             candidates.append(Path(path).resolve() / "jars")
-    spark_home = os.environ.get("SPARK_HOME")
-    if spark_home:
-        candidates.append(Path(spark_home).resolve() / "jars")
     for candidate in candidates:
         if candidate.is_dir():
             return candidate
@@ -50,8 +60,11 @@ def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
 
 
 def _extract_scala_binary(jar_name: str) -> Optional[str]:
-    match = _SCALA_VERSION_RE.search(jar_name)
-    return match.group(1) if match else None
+    for pattern in (_SCALA_SUFFIX_RE, _SCALA_LIBRARY_RE, _SCALA_VERSION_RE):
+        match = pattern.search(jar_name)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _detect_scala_binary(pyspark_module) -> Optional[str]:
