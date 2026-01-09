@@ -164,9 +164,13 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
             default_scala = DEFAULT_SCALA_SUFFIX if modern_runtime else LEGACY_SCALA_SUFFIX
 
             if not delta_ver:
-                delta_ver = _detect_delta_package_version() or DELTA_PYSPARK_COMPAT.get(
-                    key, default_delta
-                )
+                if modern_runtime:
+                    # Keep Delta aligned to the exact Spark runtime for 4.x patch releases.
+                    delta_ver = ver
+                else:
+                    delta_ver = _detect_delta_package_version() or DELTA_PYSPARK_COMPAT.get(
+                        key, default_delta
+                    )
 
             if not scala_suffix:
                 detected_scala = _detect_scala_binary(pyspark)
