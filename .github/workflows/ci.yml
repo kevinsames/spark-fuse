@@ -66,3 +66,70 @@ jobs:
           PY
           )"
           pytest --maxfail=1 --disable-warnings -q
+      - name: Spark diagnostics (on failure)
+        if: failure()
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import traceback
+
+          import pyspark
+
+          spark_home = pathlib.Path(pyspark.__file__).resolve().parent
+          jars_dir = spark_home / "jars"
+          scala_suffix = None
+          spark_version = None
+
+          for jar in sorted(jars_dir.glob("spark-core_*.jar")):
+            match = re.search(r"spark-core_(\\d+\\.\\d+)-(\\d+\\.\\d+(?:\\.\\d+)?)\\.jar", jar.name)
+            if match:
+              scala_suffix = match.group(1)
+              spark_version = match.group(2)
+              break
+
+          if not scala_suffix:
+            scala_suffix = "2.13"
+          if not spark_version:
+            spark_version = pyspark.__version__
+
+          major_minor = ".".join(spark_version.split(".")[:2])
+          delta_map = {"3.3": "2.3.0", "3.4": "2.4.0", "3.5": "3.2.0", "4.0": "4.0.0"}
+          delta_version = delta_map.get(major_minor, "4.0.0")
+
+          os.environ["SPARK_FUSE_DELTA_SCALA_SUFFIX"] = scala_suffix
+          os.environ["SPARK_FUSE_DELTA_VERSION"] = delta_version
+          os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
+          os.environ.setdefault("SPARK_LOCAL_HOSTNAME", "localhost")
+
+          print(f"pyspark.__version__={pyspark.__version__}")
+          print(f"spark_home={spark_home}")
+          print(f"spark_version_from_jars={spark_version}")
+          print(f"scala_suffix_from_jars={scala_suffix}")
+          print(f"delta_version={delta_version}")
+
+          try:
+            from spark_fuse.spark import create_session
+
+            spark = create_session(
+              app_name="spark-fuse-ci-diag",
+              master="local[1]",
+              extra_configs={
+                "spark.driver.bindAddress": "127.0.0.1",
+                "spark.driver.host": "localhost",
+                "spark.ui.enabled": "false",
+                "spark.port.maxRetries": "64",
+              },
+            )
+            print(f"spark.version={spark.version}")
+            scala_version = spark._jvm.scala.util.Properties.versionNumberString()
+            scala_binary = ".".join(scala_version.split(".")[:2])
+            print(f"scala.version={scala_version}")
+            print(f"scala.binary={scala_binary}")
+            print(f"spark.jars.packages={spark.conf.get('spark.jars.packages', '')}")
+            spark.stop()
+          except Exception as exc:
+            print(f"Spark diagnostics failed: {exc}")
+            traceback.print_exc()
+          PY
