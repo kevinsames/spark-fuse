@@ -9,8 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      SPARK_FUSE_DELTA_SCALA_SUFFIX: "2.13"
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
@@ -29,6 +27,44 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: Pin Spark runtime for tests
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import pyspark
+
+          spark_home = pathlib.Path(pyspark.__file__).resolve().parent
+          jars_dir = spark_home / "jars"
+          scala_suffix = None
+          spark_version = None
+
+          for jar in sorted(jars_dir.glob("spark-core_*.jar")):
+              match = re.search(r"spark-core_(\\d+\\.\\d+)-(\\d+\\.\\d+(?:\\.\\d+)?)\\.jar", jar.name)
+              if match:
+                  scala_suffix = match.group(1)
+                  spark_version = match.group(2)
+                  break
+
+          if not scala_suffix:
+              scala_suffix = "2.13"
+          if not spark_version:
+              spark_version = pyspark.__version__
+
+          major_minor = ".".join(spark_version.split(".")[:2])
+          delta_map = {"3.3": "2.3.0", "3.4": "2.4.0", "3.5": "3.2.0", "4.0": "4.0.0"}
+          delta_version = delta_map.get(major_minor, "4.0.0")
+
+          with open(os.environ["GITHUB_ENV"], "a") as handle:
+              handle.write(f"SPARK_HOME={spark_home}\\n")
+              handle.write(f"SPARK_FUSE_DELTA_SCALA_SUFFIX={scala_suffix}\\n")
+              handle.write(f"SPARK_FUSE_DELTA_VERSION={delta_version}\\n")
+
+          print(f"SPARK_HOME={spark_home}")
+          print(f"SPARK_FUSE_DELTA_SCALA_SUFFIX={scala_suffix}")
+          print(f"SPARK_FUSE_DELTA_VERSION={delta_version}")
+          PY
       - name: Lint
         run: |
           ruff --version
