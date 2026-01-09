@@ -27,11 +27,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Pin Spark runtime for tests
+      - name: Lint
         run: |
-          python - <<'PY' | tee -a "$GITHUB_ENV"
+          ruff --version
+          ruff check src tests
+      - name: Test
+        run: |
+          eval "$(python - <<'PY'
           import pathlib
           import re
+          import shlex
           import pyspark
 
           spark_home = pathlib.Path(pyspark.__file__).resolve().parent
@@ -55,14 +60,9 @@ jobs:
           delta_map = {"3.3": "2.3.0", "3.4": "2.4.0", "3.5": "3.2.0", "4.0": "4.0.0"}
           delta_version = delta_map.get(major_minor, "4.0.0")
 
-          print(f"SPARK_HOME={spark_home}")
-          print(f"SPARK_FUSE_DELTA_SCALA_SUFFIX={scala_suffix}")
-          print(f"SPARK_FUSE_DELTA_VERSION={delta_version}")
+          print(f"export SPARK_HOME={shlex.quote(str(spark_home))}")
+          print(f"export SPARK_FUSE_DELTA_SCALA_SUFFIX={shlex.quote(scala_suffix)}")
+          print(f"export SPARK_FUSE_DELTA_VERSION={shlex.quote(delta_version)}")
           PY
-      - name: Lint
-        run: |
-          ruff --version
-          ruff check src tests
-      - name: Test
-        run: |
+          )"
           pytest --maxfail=1 --disable-warnings -q
