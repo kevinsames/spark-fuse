@@ -26,6 +26,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
+          pip install "pyspark==4.0.0" "delta-spark==4.0.0"
           pip install -e ".[dev]"
       - name: Lint
         run: |
