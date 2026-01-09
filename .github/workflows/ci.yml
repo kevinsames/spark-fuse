@@ -34,6 +34,7 @@ jobs:
       - name: Test
         run: |
           eval "$(python - <<'PY'
+          import importlib.metadata
           import pathlib
           import re
           import shlex
@@ -58,7 +59,10 @@ jobs:
 
           major_minor = ".".join(spark_version.split(".")[:2])
           delta_map = {"3.3": "2.3.0", "3.4": "2.4.0", "3.5": "3.2.0", "4.0": "4.0.0"}
-          delta_version = delta_map.get(major_minor, "4.0.0")
+          try:
+              delta_version = importlib.metadata.version("delta-spark")
+          except importlib.metadata.PackageNotFoundError:
+              delta_version = delta_map.get(major_minor, "4.0.0")
 
           print(f"export SPARK_HOME={shlex.quote(str(spark_home))}")
           print(f"export SPARK_FUSE_DELTA_SCALA_SUFFIX={shlex.quote(scala_suffix)}")
@@ -70,6 +74,7 @@ jobs:
         if: failure()
         run: |
           python - <<'PY'
+          import importlib.metadata
           import os
           import pathlib
           import re
@@ -96,7 +101,10 @@ jobs:
 
           major_minor = ".".join(spark_version.split(".")[:2])
           delta_map = {"3.3": "2.3.0", "3.4": "2.4.0", "3.5": "3.2.0", "4.0": "4.0.0"}
-          delta_version = delta_map.get(major_minor, "4.0.0")
+          try:
+            delta_version = importlib.metadata.version("delta-spark")
+          except importlib.metadata.PackageNotFoundError:
+            delta_version = delta_map.get(major_minor, "4.0.0")
 
           os.environ["SPARK_FUSE_DELTA_SCALA_SUFFIX"] = scala_suffix
           os.environ["SPARK_FUSE_DELTA_VERSION"] = delta_version

@@ -60,6 +60,18 @@ def _find_spark_jars_dir(pyspark_module) -> Optional[Path]:
     return None
 
 
+def _detect_delta_package_version() -> Optional[str]:
+    try:
+        from importlib import metadata
+    except ImportError:  # pragma: no cover - Python <3.8
+        return None
+
+    try:
+        return metadata.version("delta-spark")
+    except metadata.PackageNotFoundError:
+        return None
+
+
 def _extract_scala_binary(jar_name: str) -> Optional[str]:
     for pattern in (_SCALA_SUFFIX_RE, _SCALA_LIBRARY_RE, _SCALA_VERSION_RE):
         match = pattern.search(jar_name)
@@ -152,7 +164,9 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
             default_scala = DEFAULT_SCALA_SUFFIX if modern_runtime else LEGACY_SCALA_SUFFIX
 
             if not delta_ver:
-                delta_ver = DELTA_PYSPARK_COMPAT.get(key, default_delta)
+                delta_ver = _detect_delta_package_version() or DELTA_PYSPARK_COMPAT.get(
+                    key, default_delta
+                )
 
             if not scala_suffix:
                 detected_scala = _detect_scala_binary(pyspark)
