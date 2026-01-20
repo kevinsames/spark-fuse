@@ -7,6 +7,7 @@ from pyspark.sql import SparkSession
 
 from rich.console import Console
 from rich.theme import Theme
+from tqdm.auto import tqdm
 
 
 _console: Optional[Console] = None
@@ -27,34 +28,51 @@ _DEFAULT_SPARK_LOGGERS: Sequence[str] = (
 )
 
 
-def create_progress_tracker(total_steps: int) -> Dict[str, float]:
+def create_progress_tracker(total_steps: int) -> Dict[str, object]:
     """Return a simple progress tracker structure."""
-    return {"current": 0, "total": float(total_steps), "start": time.perf_counter(), "last": None}
+    return {
+        "current": 0,
+        "total": float(total_steps),
+        "start": time.perf_counter(),
+        "last": None,
+        "bar": None,
+    }
 
 
-def log_progress(tracker: Dict[str, float], logger: Console, label: str) -> None:
-    """Advance a progress tracker and log elapsed timings."""
+def log_progress(tracker: Dict[str, object], logger: Console, label: str) -> None:
+    """Advance a progress tracker and log elapsed timings with tqdm."""
 
     now = time.perf_counter()
     last = tracker.get("last") or tracker["start"]
 
-    tracker["current"] += 1
+    tracker["current"] = int(tracker.get("current", 0)) + 1
     tracker["last"] = now
 
     current = int(tracker["current"])
-    total = tracker.get("total") or 1
+    total = int(tracker.get("total") or 1)
 
-    elapsed = now - last
-    total_elapsed = now - tracker["start"]
+    bar = tracker.get("bar")
+    if bar is None:
+        bar = tqdm(
+            total=total,
+            file=logger.file,
+            ascii=True,
+            dynamic_ncols=True,
+        )
+        tracker["bar"] = bar
+    elif bar.total != total:
+        bar.total = total
 
-    filled = int(10 * current / total)
-    filled = max(0, min(10, filled))
-    bar = "#" * filled + "." * (10 - filled)
+    elapsed = now - float(last)
+    total_elapsed = now - float(tracker["start"])
 
-    logger.log(
-        f"[INFO] [{bar}] {current}/{int(total)} {label} "
-        f"(+{elapsed:.2f}s, total {total_elapsed:.2f}s)"
-    )
+    bar.set_description_str(label)
+    bar.set_postfix_str(f"+{elapsed:.2f}s, total {total_elapsed:.2f}s")
+    bar.update(1)
+
+    if current >= total:
+        bar.close()
+        tracker["bar"] = None
 
 
 def enable_spark_logging(

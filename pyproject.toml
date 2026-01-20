@@ -29,6 +29,7 @@ dependencies = [
   "azure-identity>=1.14",
   "typer>=0.9",
   "rich>=13",
+  "tqdm>=4.66",
   "pydantic>=2",
   "requests>=2",
   "numpy>=2,<3",
