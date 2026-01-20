@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import time
-from typing import Dict, Iterable, Optional, Sequence
+from typing import Callable, Dict, Iterable, Optional, Protocol, Sequence, Union
 
 from pyspark.sql import SparkSession
 
+from pydantic import BaseModel, Field, field_validator
 from rich.console import Console
 from rich.theme import Theme
 from tqdm.auto import tqdm
@@ -28,15 +29,55 @@ _DEFAULT_SPARK_LOGGERS: Sequence[str] = (
 )
 
 
-def create_progress_tracker(total_steps: int) -> Dict[str, object]:
+class LogEventRecord(BaseModel):
+    label: str = Field(min_length=1)
+    event: Optional[str] = None
+    step: int = Field(ge=0)
+    total: int = Field(ge=1)
+    elapsed_seconds: float = Field(ge=0.0)
+    total_elapsed_seconds: float = Field(ge=0.0)
+    timestamp: float = Field(ge=0.0)
+
+    @field_validator("label")
+    @classmethod
+    def _validate_label(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("label must be non-empty")
+        return value
+
+    @field_validator("event", mode="before")
+    @classmethod
+    def _normalize_event(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text.upper() or None
+
+
+class LogEventWriter(Protocol):
+    def write(self, event: LogEventRecord) -> None: ...
+
+
+LogEventSink = Union[Callable[[LogEventRecord], None], LogEventWriter]
+LogEventSinks = Union[LogEventSink, Sequence[LogEventSink]]
+
+
+def create_progress_tracker(
+    total_steps: int,
+    *,
+    event_sinks: Optional[LogEventSinks] = None,
+) -> Dict[str, object]:
     """Return a simple progress tracker structure."""
-    return {
+    tracker = {
         "current": 0,
         "total": float(total_steps),
         "start": time.perf_counter(),
         "last": None,
         "bar": None,
     }
+    if event_sinks is not None:
+        tracker["event_sinks"] = _normalize_event_sinks(event_sinks)
+    return tracker
 
 
 def _format_event_label(label: str, event: Optional[str]) -> str:
@@ -48,6 +89,24 @@ def _format_event_label(label: str, event: Optional[str]) -> str:
     return f"{event_label}: {label}"
 
 
+def _normalize_event_sinks(sinks: Optional[LogEventSinks]) -> Sequence[LogEventSink]:
+    if sinks is None:
+        return ()
+    if isinstance(sinks, (list, tuple)):
+        return list(sinks)
+    return (sinks,)
+
+
+def _emit_log_event(record: LogEventRecord, sinks: Sequence[LogEventSink]) -> None:
+    for sink in sinks:
+        if hasattr(sink, "write"):
+            sink.write(record)
+        elif callable(sink):
+            sink(record)
+        else:
+            raise TypeError(f"Unsupported log event sink: {sink!r}")
+
+
 def log_event(
     tracker: Dict[str, object],
     logger: Console,
@@ -55,8 +114,9 @@ def log_event(
     *,
     event: Optional[str] = None,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    """Advance a progress tracker and log elapsed timings with tqdm."""
+    """Advance a progress tracker, emit a validated event record, and log with tqdm."""
 
     now = time.perf_counter()
     last = tracker.get("last") or tracker["start"]
@@ -65,10 +125,28 @@ def log_event(
     current = int(tracker.get("current", 0))
     if advance_by:
         current += advance_by
-    tracker["current"] = current
-    tracker["last"] = now
 
     total = int(tracker.get("total") or 1)
+
+    elapsed = now - float(last)
+    total_elapsed = now - float(tracker["start"])
+
+    record = LogEventRecord(
+        label=label,
+        event=event,
+        step=current,
+        total=total,
+        elapsed_seconds=elapsed,
+        total_elapsed_seconds=total_elapsed,
+        timestamp=time.time(),
+    )
+
+    event_sinks = _normalize_event_sinks(sinks if sinks is not None else tracker.get("event_sinks"))
+    if event_sinks:
+        _emit_log_event(record, event_sinks)
+
+    tracker["current"] = current
+    tracker["last"] = now
 
     bar = tracker.get("bar")
     if bar is None:
@@ -81,10 +159,7 @@ def log_event(
     elif bar.total != total:
         bar.total = total
 
-    elapsed = now - float(last)
-    total_elapsed = now - float(tracker["start"])
-
-    bar.set_description_str(_format_event_label(label, event))
+    bar.set_description_str(_format_event_label(label, record.event))
     bar.set_postfix_str(f"+{elapsed:.2f}s, total {total_elapsed:.2f}s")
     if advance_by:
         bar.update(advance_by)
@@ -102,8 +177,9 @@ def log_start(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="start", advance=advance)
+    log_event(tracker, logger, label, event="start", advance=advance, sinks=sinks)
 
 
 def log_end(
@@ -112,8 +188,9 @@ def log_end(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="end", advance=advance)
+    log_event(tracker, logger, label, event="end", advance=advance, sinks=sinks)
 
 
 def log_error(
@@ -122,8 +199,9 @@ def log_error(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="error", advance=advance)
+    log_event(tracker, logger, label, event="error", advance=advance, sinks=sinks)
 
 
 def log_warn(
@@ -132,8 +210,9 @@ def log_warn(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="warn", advance=advance)
+    log_event(tracker, logger, label, event="warn", advance=advance, sinks=sinks)
 
 
 def log_info(
@@ -142,8 +221,9 @@ def log_info(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="info", advance=advance)
+    log_event(tracker, logger, label, event="info", advance=advance, sinks=sinks)
 
 
 def log_debug(
@@ -152,8 +232,9 @@ def log_debug(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="debug", advance=advance)
+    log_event(tracker, logger, label, event="debug", advance=advance, sinks=sinks)
 
 
 def log_fatal(
@@ -162,8 +243,9 @@ def log_fatal(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="fatal", advance=advance)
+    log_event(tracker, logger, label, event="fatal", advance=advance, sinks=sinks)
 
 
 def log_trace(
@@ -172,8 +254,9 @@ def log_trace(
     label: str,
     *,
     advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
 ) -> None:
-    log_event(tracker, logger, label, event="trace", advance=advance)
+    log_event(tracker, logger, label, event="trace", advance=advance, sinks=sinks)
 
 
 def enable_spark_logging(
