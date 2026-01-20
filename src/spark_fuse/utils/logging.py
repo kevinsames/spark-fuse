@@ -56,7 +56,6 @@ def log_progress(tracker: Dict[str, object], logger: Console, label: str) -> Non
         bar = tqdm(
             total=total,
             file=logger.file,
-            ascii=True,
             dynamic_ncols=True,
         )
         tracker["bar"] = bar
