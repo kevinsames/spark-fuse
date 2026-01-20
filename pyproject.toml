@@ -31,10 +31,12 @@ dependencies = [
   "rich>=13",
   "tqdm>=4.66",
   "pydantic>=2",
+  "pydantic-settings>=2",
   "requests>=2",
   "numpy>=2,<3",
   "pandas>=2,<3",
   "pyarrow>=14",
+  "pyyaml>=6",
   "sentence-transformers>=2.5",
 ]
 
