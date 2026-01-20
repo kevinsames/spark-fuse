@@ -39,16 +39,35 @@ def create_progress_tracker(total_steps: int) -> Dict[str, object]:
     }
 
 
-def log_progress(tracker: Dict[str, object], logger: Console, label: str) -> None:
+def _format_event_label(label: str, event: Optional[str]) -> str:
+    if not event:
+        return label
+    event_label = event.strip().upper()
+    if not event_label:
+        return label
+    return f"{event_label}: {label}"
+
+
+def log_event(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    event: Optional[str] = None,
+    advance: int = 1,
+) -> None:
     """Advance a progress tracker and log elapsed timings with tqdm."""
 
     now = time.perf_counter()
     last = tracker.get("last") or tracker["start"]
 
-    tracker["current"] = int(tracker.get("current", 0)) + 1
+    advance_by = int(advance)
+    current = int(tracker.get("current", 0))
+    if advance_by:
+        current += advance_by
+    tracker["current"] = current
     tracker["last"] = now
 
-    current = int(tracker["current"])
     total = int(tracker.get("total") or 1)
 
     bar = tracker.get("bar")
@@ -65,13 +84,96 @@ def log_progress(tracker: Dict[str, object], logger: Console, label: str) -> Non
     elapsed = now - float(last)
     total_elapsed = now - float(tracker["start"])
 
-    bar.set_description_str(label)
+    bar.set_description_str(_format_event_label(label, event))
     bar.set_postfix_str(f"+{elapsed:.2f}s, total {total_elapsed:.2f}s")
-    bar.update(1)
+    if advance_by:
+        bar.update(advance_by)
+    else:
+        bar.refresh()
 
     if current >= total:
         bar.close()
         tracker["bar"] = None
+
+
+def log_start(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="start", advance=advance)
+
+
+def log_end(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="end", advance=advance)
+
+
+def log_error(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="error", advance=advance)
+
+
+def log_warn(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="warn", advance=advance)
+
+
+def log_info(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="info", advance=advance)
+
+
+def log_debug(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="debug", advance=advance)
+
+
+def log_fatal(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="fatal", advance=advance)
+
+
+def log_trace(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    *,
+    advance: int = 1,
+) -> None:
+    log_event(tracker, logger, label, event="trace", advance=advance)
 
 
 def enable_spark_logging(
