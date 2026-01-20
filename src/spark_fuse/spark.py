@@ -1,5 +1,7 @@
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, Optional
@@ -117,6 +119,48 @@ def _detect_spark_version(pyspark_module) -> Optional[str]:
         return None
 
 
+def _has_java() -> bool:
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        java_bin = Path(java_home) / "bin" / "java"
+        if java_bin.exists():
+            return True
+    return shutil.which("java") is not None
+
+
+def _configure_java_home() -> None:
+    """Best-effort JAVA_HOME setup for macOS when unset."""
+    if os.environ.get("JAVA_HOME"):
+        return
+    if sys.platform != "darwin":
+        return
+
+    for version in ("21", "17", "11"):
+        try:
+            output = subprocess.check_output(
+                ["/usr/libexec/java_home", "-v", version],
+                stderr=subprocess.STDOUT,
+            )
+            java_home = output.decode().strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+        if java_home:
+            os.environ["JAVA_HOME"] = java_home
+            os.environ["PATH"] = f"{java_home}/bin:" + os.environ.get("PATH", "")
+            return
+
+
+def _ensure_java_available() -> None:
+    _configure_java_home()
+    if _has_java():
+        return
+    raise RuntimeError(
+        "Java runtime not found for PySpark. Install JDK 17 and ensure `JAVA_HOME` or "
+        '`java` is on PATH. On macOS: export JAVA_HOME="$(/usr/libexec/java_home -v 17)". '
+        "If running from Jupyter, restart the kernel after setting env vars."
+    )
+
+
 def detect_environment() -> str:
     """Detect a likely runtime environment: databricks, fabric, or local.
 
@@ -135,7 +179,11 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
     Uses a simple compatibility map between PySpark and delta-spark to avoid
     runtime class mismatches. Overrides can be provided via the environment
     variables `SPARK_FUSE_DELTA_VERSION` and `SPARK_FUSE_DELTA_SCALA_SUFFIX`.
+    Set `SPARK_FUSE_DISABLE_DELTA=1` to skip Delta configs entirely.
     """
+    if os.environ.get("SPARK_FUSE_DISABLE_DELTA"):
+        return builder
+
     builder = builder.config(
         "spark.sql.extensions",
         "io.delta.sql.DeltaSparkSessionExtension",
@@ -208,6 +256,13 @@ def create_session(
     - Accepts `extra_configs` to inject environment-specific credentials.
     """
     env = detect_environment()
+    local_master = (master is None and env == "local") or (
+        isinstance(master, str) and master.startswith("local")
+    )
+
+    if local_master:
+        os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
+        os.environ.setdefault("SPARK_LOCAL_HOSTNAME", "localhost")
 
     python_exec = os.environ.get("PYSPARK_PYTHON", sys.executable)
     driver_python = os.environ.get("PYSPARK_DRIVER_PYTHON", python_exec)
@@ -220,6 +275,10 @@ def create_session(
             current_exec = None
         if current_exec and os.path.realpath(current_exec) != os.path.realpath(python_exec):
             active.stop()
+            active = None
+
+    if active is None:
+        _ensure_java_available()
 
     builder = SparkSession.builder.appName(app_name)
     if master:
@@ -235,6 +294,17 @@ def create_session(
 
     # Minimal IO friendliness. Advanced auth must come via extra_configs or cluster env.
     builder = builder.config("spark.sql.shuffle.partitions", "8")
+
+    if local_master:
+        local_defaults = {
+            "spark.driver.bindAddress": "127.0.0.1",
+            "spark.driver.host": "localhost",
+            "spark.port.maxRetries": "64",
+        }
+        for k, v in local_defaults.items():
+            if extra_configs and k in extra_configs:
+                continue
+            builder = builder.config(k, v)
 
     if extra_configs:
         for k, v in extra_configs.items():
