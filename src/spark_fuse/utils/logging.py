@@ -73,6 +73,7 @@ def create_progress_tracker(
         "total": float(total_steps),
         "start": time.perf_counter(),
         "last": None,
+        "last_progress": None,
         "bar": None,
     }
     if event_sinks is not None:
@@ -119,7 +120,8 @@ def log_event(
     """Advance a progress tracker, emit a validated event record, and log with tqdm."""
 
     now = time.perf_counter()
-    last = tracker.get("last") or tracker["start"]
+    last_event = tracker.get("last") or tracker["start"]
+    last_progress = tracker.get("last_progress") or tracker["start"]
 
     advance_by = int(advance)
     current = int(tracker.get("current", 0))
@@ -128,7 +130,8 @@ def log_event(
 
     total = int(tracker.get("total") or 1)
 
-    elapsed = now - float(last)
+    elapsed_event = now - float(last_event)
+    elapsed_progress = now - float(last_progress)
     total_elapsed = now - float(tracker["start"])
 
     record = LogEventRecord(
@@ -136,7 +139,7 @@ def log_event(
         event=event,
         step=current,
         total=total,
-        elapsed_seconds=elapsed,
+        elapsed_seconds=elapsed_event,
         total_elapsed_seconds=total_elapsed,
         timestamp=time.time(),
     )
@@ -147,6 +150,8 @@ def log_event(
 
     tracker["current"] = current
     tracker["last"] = now
+    if advance_by:
+        tracker["last_progress"] = now
 
     bar = tracker.get("bar")
     if bar is None:
@@ -160,7 +165,7 @@ def log_event(
         bar.total = total
 
     bar.set_description_str(_format_event_label(label, record.event))
-    bar.set_postfix_str(f"+{elapsed:.2f}s, total {total_elapsed:.2f}s")
+    bar.set_postfix_str(f"+{elapsed_progress:.2f}s, total {total_elapsed:.2f}s")
     if advance_by:
         bar.update(advance_by)
     else:
