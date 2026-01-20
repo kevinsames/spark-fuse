@@ -1,0 +1,5 @@
+database:
+  name: spark_fuse_prod
+
+logging:
+  level: WARN

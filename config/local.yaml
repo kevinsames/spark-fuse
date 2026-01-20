@@ -1,0 +1,5 @@
+database:
+  name: spark_fuse_local
+
+logging:
+  level: DEBUG

@@ -1,0 +1,14 @@
+database:
+  host: localhost
+  port: 5432
+  name: spark_fuse
+  user: spark_fuse
+  pool_size: 5
+  connect_timeout_seconds: 10
+
+logging:
+  level: INFO
+
+security:
+  allowed_hosts: []
+  token_ttl_seconds: 3600
