@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from typing import Callable, Dict, Iterable, Optional, Protocol, Sequence, Union
+import traceback
+from typing import Callable, Dict, List, Iterable, Optional, Protocol, Sequence, Union
 
 from pyspark.sql import SparkSession
 
@@ -62,6 +63,26 @@ LogEventSink = Union[Callable[[LogEventRecord], None], LogEventWriter]
 LogEventSinks = Union[LogEventSink, Sequence[LogEventSink]]
 
 
+class DeltaEventSink:
+    def __init__(self, spark: SparkSession, table: str, flush_every: int = 50) -> None:
+        self.spark = spark
+        self.table = table
+        self.flush_every = flush_every
+        self._buffer: List[Dict[str, object]] = []
+
+    def write(self, record) -> None:
+        self._buffer.append(record.model_dump())
+        if len(self._buffer) >= self.flush_every:
+            self.flush()
+
+    def flush(self) -> None:
+        if not self._buffer:
+            return
+        df = self.spark.createDataFrame(self._buffer)
+        df.write.format("delta").mode("append").saveAsTable(self.table)
+        self._buffer.clear()
+
+
 def create_progress_tracker(
     total_steps: int,
     *,
@@ -108,6 +129,55 @@ def _emit_log_event(record: LogEventRecord, sinks: Sequence[LogEventSink]) -> No
             raise TypeError(f"Unsupported log event sink: {sink!r}")
 
 
+def _display_html_databricks(html: str) -> None:
+    # Databricks notebooks: displayHTML renders HTML
+    try:
+        displayHTML(html)  # type: ignore[name-defined]
+        return
+    except NameError:
+        pass
+
+    # Non-Databricks notebooks: IPython HTML rendering
+    try:
+        from IPython.display import HTML, display  # type: ignore
+
+        display(HTML(html))
+        return
+    except Exception:
+        pass
+
+    # Last resort: plain text
+    print(html)
+
+
+_EVENT_STYLES = {
+    "info": {
+        "bg": "#fff3e0",
+        "color": "#e65100",
+        "border": "#ff9800",
+        "icon": "💡",
+    },
+    "warn": {
+        "bg": "#fff8e1",
+        "color": "#e65100",
+        "border": "#ffc107",
+        "icon": "⚠️",
+    },
+    "error": {
+        "bg": "#ffebee",
+        "color": "#c62828",
+        "border": "#f44336",
+        "icon": "❌",
+    },
+    "end": {
+        "bg": "#e8f5e9",
+        "color": "#2e7d32",
+        "border": "#4caf50",
+        "icon": "✅",
+    },
+}
+
+
 def log_event(
     tracker: Dict[str, object],
     logger: Console,
@@ -116,6 +186,7 @@ def log_event(
     event: Optional[str] = None,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
     """Advance a progress tracker, emit a validated event record, and log with tqdm."""
 
@@ -147,6 +218,35 @@ def log_event(
     event_sinks = _normalize_event_sinks(sinks if sinks is not None else tracker.get("event_sinks"))
     if event_sinks:
         _emit_log_event(record, event_sinks)
+    if show_html:
+        event_type = (record.event or "info").lower()
+        style = _EVENT_STYLES.get(event_type, _EVENT_STYLES["info"])
+
+        html = f"""
+        <div style="
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin: 6px 0;
+            background-color: {style['bg']};
+            border: 1px solid {style['border']};
+            color: {style['color']};
+        ">
+            <div style="font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <span>{style['icon']}</span>
+                <span>{record.label}</span>
+                {f"<span style='font-weight:400;'>— {record.event}</span>" if record.event else ""}
+            </div>
+
+            <div style="font-size: 12px; line-height: 1.4;">
+                <div><strong>Step:</strong> {record.step} / {record.total}</div>
+                <div><strong>Δ since progress:</strong> {elapsed_progress:.2f}s</div>
+                <div><strong>Total:</strong> {total_elapsed:.2f}s</div>
+            </div>
+        </div>
+        """.strip()
+
+        _display_html_databricks(html)
 
     tracker["current"] = current
     tracker["last"] = now
@@ -183,8 +283,11 @@ def log_start(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="start", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="start", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def log_end(
@@ -194,8 +297,11 @@ def log_end(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="end", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="end", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def log_error(
@@ -205,8 +311,32 @@ def log_error(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="error", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="error", advance=advance, sinks=sinks, show_html=show_html
+    )
+
+
+def log_exception(
+    tracker: Dict[str, object],
+    logger: Console,
+    label: str,
+    exc: BaseException,
+    *,
+    advance: int = 1,
+    sinks: Optional[LogEventSinks] = None,
+    include_traceback: bool = True,
+    show_html: bool = False,
+) -> None:
+    """Log an exception as an error event and optionally emit its traceback."""
+    message = f"{label}: {exc}" if str(exc) else label
+    log_error(tracker, logger, message, advance=advance, sinks=sinks, show_html=show_html)
+
+    if include_traceback:
+        trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip()
+        if trace:
+            logger.print(trace, style="error", markup=False)
 
 
 def log_warn(
@@ -216,8 +346,11 @@ def log_warn(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="warn", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="warn", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def log_info(
@@ -227,8 +360,11 @@ def log_info(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="info", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="info", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def log_debug(
@@ -238,8 +374,11 @@ def log_debug(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="debug", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="debug", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def log_fatal(
@@ -249,8 +388,11 @@ def log_fatal(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="fatal", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="fatal", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def log_trace(
@@ -260,8 +402,11 @@ def log_trace(
     *,
     advance: int = 1,
     sinks: Optional[LogEventSinks] = None,
+    show_html: bool = False,
 ) -> None:
-    log_event(tracker, logger, label, event="trace", advance=advance, sinks=sinks)
+    log_event(
+        tracker, logger, label, event="trace", advance=advance, sinks=sinks, show_html=show_html
+    )
 
 
 def enable_spark_logging(
