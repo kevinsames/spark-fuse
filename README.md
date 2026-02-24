@@ -132,7 +132,7 @@ df.write.format(QDRANT_FORMAT).option(QDRANT_CONFIG_OPTION, json.dumps(write_cfg
 ```python
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from spark_fuse.utils.transformations import with_langchain_embeddings
+from spark_fuse.utils.llm import with_langchain_embeddings
 
 splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=32)
 embedded = with_langchain_embeddings(
@@ -185,7 +185,7 @@ interactive companion.
 
 LLM-Powered Column Mapping
 ```python
-from spark_fuse.utils.transformations import map_column_with_llm
+from spark_fuse.utils.llm import map_column_with_llm
 
 standard_values = ["Apple", "Banana", "Cherry"]
 mapped_df = map_column_with_llm(

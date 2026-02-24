@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-02-24
 ### Removed
 - ADLS Gen2, Fabric, and Databricks connectors plus their CLI commands/documentation, focusing IO on REST and SPARQL sources.
 - `read_rest_api` and `read_sparql` helpers—use the Spark Data Source API directly with the new config builders.
 - Visualization helpers exposed via `spark_fuse.utils.visualization` and the dedicated demo notebook; lean on project-specific pandas/matplotlib code when rendering data.
+
 ### Changed
 - CLI `datasources` command replaces `connectors`, and `spark-fuse read` now requires `--format rest|sparql` to select the desired data source.
 - SCD helpers have been fully renamed to the change-tracking API (`spark_fuse.utils.change_tracking`) with `change_tracking_mode=current_only|track_history` and the new ``DataFrame.write.change_tracking`` sugar.
@@ -22,7 +25,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [1.0.2] - 2025-12-01
 ### Added
-- Progress helpers (`create_progress_tracker`, `log_progress`) now live in `spark_fuse.utils.logging` to standardize elapsed-time logging across notebooks.
+- Progress helpers (`create_progress_tracker`, `log_progress`) now live in `spark_fuse.utils.progress` to standardize elapsed-time logging across notebooks.
 - The data-processing template inspects Delta history before/after writes and uses the change-tracking writer with schema evolution enabled.
 
 ### Changed
@@ -194,7 +197,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/kevinsames/spark-fuse/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/kevinsames/spark-fuse/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/kevinsames/spark-fuse/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...v1.0.1

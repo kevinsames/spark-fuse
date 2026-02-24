@@ -77,6 +77,7 @@ nav:
       - SPARQL: api/io_sparql.md
       - Qdrant: api/io_qdrant.md
       - Utils — DataFrame: api/utils_dataframe.md
-      - Utils — Logging: api/utils_logging.md
+      - Utils — Progress & Logging: api/utils_logging.md
       - Utils — Change Tracking: api/utils_change_tracking.md
       - Utils — Transformations: api/utils_transformations.md
+      - Utils — LLM: api/utils_llm.md

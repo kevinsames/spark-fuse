@@ -16,6 +16,9 @@ from pyspark.sql.datasource import DataSource, DataSourceReader, InputPartition
 from pyspark.sql.types import StructType
 from pyspark.sql.types import _infer_schema, _merge_type
 
+from ._http import normalize_jsonable as _normalize_jsonable
+from ._http import validate_http_url as _validate_http_url
+
 _LOGGER = logging.getLogger(__name__)
 _DEFAULT_RECORD_KEYS: Sequence[str] = ("data", "results", "items", "value")
 REST_API_CONFIG_OPTION = "spark.fuse.rest.config"
@@ -283,16 +286,6 @@ def _fetch_with_token_pagination(
         if next_token is None or next_token == "":
             break
         token_value = next_token
-
-
-def _normalize_jsonable(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(k): _normalize_jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_normalize_jsonable(v) for v in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return str(value)
 
 
 def _as_records_field(value: Optional[Any]) -> Optional[List[str]]:
@@ -612,10 +605,6 @@ class RestAPIDataSource(DataSource):
         self._partitions = [_RestAPIInputPartition(chunk) for chunk in chunks]
         if not self._partitions:
             self._partitions = [_RestAPIInputPartition([])]
-
-
-def _validate_http_url(value: str) -> bool:
-    return isinstance(value, str) and value.startswith(("http://", "https://"))
 
 
 def build_rest_api_config(

@@ -228,12 +228,12 @@ def log_event(
             padding: 10px 12px;
             border-radius: 8px;
             margin: 6px 0;
-            background-color: {style['bg']};
-            border: 1px solid {style['border']};
-            color: {style['color']};
+            background-color: {style["bg"]};
+            border: 1px solid {style["border"]};
+            color: {style["color"]};
         ">
             <div style="font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                <span>{style['icon']}</span>
+                <span>{style["icon"]}</span>
                 <span>{record.label}</span>
                 {f"<span style='font-weight:400;'>— {record.event}</span>" if record.event else ""}
             </div>
