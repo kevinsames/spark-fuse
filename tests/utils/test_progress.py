@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from spark_fuse.utils.logging import enable_spark_logging
+from spark_fuse.utils.progress import enable_spark_logging
 
 
 class FakeLogger:

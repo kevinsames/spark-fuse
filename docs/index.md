@@ -88,7 +88,7 @@ else:
 
 4) LLM-powered semantic mapping
 ```python
-from spark_fuse.utils.transformations import map_column_with_llm
+from spark_fuse.utils.llm import map_column_with_llm
 
 targets = ["Apple", "Banana", "Cherry"]
 normalized = map_column_with_llm(
@@ -126,7 +126,7 @@ Use `dry_run=True` during development to avoid external API calls until credenti
 ```python
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from spark_fuse.utils.transformations import with_langchain_embeddings
+from spark_fuse.utils.llm import with_langchain_embeddings
 
 splitter = RecursiveCharacterTextSplitter(chunk_size=256, chunk_overlap=32)
 embedded = with_langchain_embeddings(

@@ -4,7 +4,7 @@ The `map_column_with_llm` helper (introduced in spark-fuse 0.2.0) normalizes fre
 
 ```python
 from spark_fuse.spark import create_session
-from spark_fuse.utils.transformations import map_column_with_llm
+from spark_fuse.utils.llm import map_column_with_llm
 
 spark = create_session(app_name="spark-fuse-llm-demo")
 

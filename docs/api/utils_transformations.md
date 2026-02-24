@@ -9,5 +9,3 @@
         - cast_columns
         - normalize_whitespace
         - split_by_date_formats
-        - with_langchain_embeddings
-        - map_column_with_llm

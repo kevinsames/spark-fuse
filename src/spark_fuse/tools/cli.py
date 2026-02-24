@@ -25,7 +25,7 @@ from ..io import (
     register_sparql_data_source,
 )
 from ..spark import create_session
-from ..utils.logging import console
+from ..utils.progress import console
 
 
 app = typer.Typer(name="spark-fuse", help="PySpark toolkit: connectors and CLI tools")

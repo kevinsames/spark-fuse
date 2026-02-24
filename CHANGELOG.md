@@ -18,7 +18,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [1.0.2] - 2025-12-01
 ### Added
-- Exported lightweight progress helpers (`create_progress_tracker`, `log_progress`) from `spark_fuse.utils.logging` so notebooks can log elapsed time consistently.
+- Exported lightweight progress helpers (`create_progress_tracker`, `log_progress`) from `spark_fuse.utils.progress` so notebooks can log elapsed time consistently.
 - Template data-processing notebook now inspects Delta logs before/after writes and supports change-tracking writes with schema evolution.
 
 ### Changed

@@ -1,3 +1,3 @@
-# Logging Utilities
+# Progress & Logging Utilities
 
-::: spark_fuse.utils.logging
+::: spark_fuse.utils.progress

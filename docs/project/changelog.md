@@ -22,7 +22,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [1.0.2] - 2025-12-01
 ### Added
-- Progress helpers (`create_progress_tracker`, `log_progress`) now live in `spark_fuse.utils.logging` to standardize elapsed-time logging across notebooks.
+- Progress helpers (`create_progress_tracker`, `log_progress`) now live in `spark_fuse.utils.progress` to standardize elapsed-time logging across notebooks.
 - The data-processing template inspects Delta history before/after writes and uses the change-tracking writer with schema evolution enabled.
 
 ### Changed
