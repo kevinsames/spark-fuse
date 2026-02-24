@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-02-24
+## [1.2.0] - 2026-02-24
 ### Removed
 - ADLS Gen2, Fabric, and Databricks connectors plus their CLI commands/documentation, focusing IO on REST and SPARQL sources.
 - `read_rest_api` and `read_sparql` helpers—use the Spark Data Source API directly with the new config builders.
@@ -197,8 +197,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/kevinsames/spark-fuse/compare/v1.0.3...v1.1.0
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/kevinsames/spark-fuse/compare/v1.0.3...v1.2.0
 [1.0.3]: https://github.com/kevinsames/spark-fuse/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/kevinsames/spark-fuse/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...v1.0.1

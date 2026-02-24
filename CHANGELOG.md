@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-02-24
+## [1.2.0] - 2026-02-24
 ### Added
 - `with_langchain_embeddings` transformation to batch LangChain embedding calls into a Spark column, with optional LangChain text splitter support and configurable chunk aggregation.
 
@@ -138,8 +138,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Tests: registry resolution, path validation (ADLS/Fabric), and SQL generation (UC/Hive).
 - CI: Python 3.9–3.11 matrix, ruff + pytest. Pre-commit hooks and Makefile.
 
-[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/kevinsames/spark-fuse/compare/v1.0.2...v1.1.0
+[Unreleased]: https://github.com/kevinsames/spark-fuse/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/kevinsames/spark-fuse/compare/v1.0.2...v1.2.0
 [1.0.2]: https://github.com/kevinsames/spark-fuse/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/kevinsames/spark-fuse/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/kevinsames/spark-fuse/compare/v0.3.2...v1.0.0
