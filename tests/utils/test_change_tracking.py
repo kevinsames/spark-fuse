@@ -328,6 +328,46 @@ def test_change_tracking_writer_uses_apply(monkeypatch, spark, tmp_path: Path):
     assert observed["options"]["change_tracking_mode"] == "current_only"
 
 
+def test_track_history_upsert_idempotent(spark, tmp_path: Path):
+    """Calling track_history_upsert twice with identical data must produce no new rows."""
+    target = str(tmp_path / "track_history_idempotent")
+
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},
+            {"id": 2, "val": "x", "ts": 5},
+        ]
+    )
+
+    common_kwargs = dict(
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    track_history_upsert(spark, df, target, **common_kwargs)
+    out1 = spark.read.format("delta").load(target)
+    count_after_first = out1.count()
+    current_after_first = out1.filter("is_current = true").count()
+
+    # Second call with identical data — must be a no-op
+    track_history_upsert(spark, df, target, **common_kwargs)
+    out2 = spark.read.format("delta").load(target)
+    count_after_second = out2.count()
+    current_after_second = out2.filter("is_current = true").count()
+
+    assert (
+        count_after_second == count_after_first
+    ), f"Row count changed on idempotent call: {count_after_first} -> {count_after_second}"
+    assert current_after_second == current_after_first
+    # Every key must still have exactly one current row
+    assert current_after_second == 2
+    rows = _rows_by_key(out2.filter("is_current = true"), "id")
+    assert rows[1]["version"] == 1
+    assert rows[2]["version"] == 1
+
+
 def test_dataframe_change_tracking_property(monkeypatch, spark, tmp_path: Path):
     df = spark.createDataFrame([{"id": 1, "val": "a"}])
     target = str(tmp_path / "df_property_target")

@@ -307,7 +307,7 @@ def _track_history_process_batch(
         return True
 
     target_dt = _delta_table(spark, target)
-    target_cols = set(_read_target_df(spark, target).columns)
+    target_cols = set(target_dt.toDF().columns)
 
     if hash_col in target_cols:
         change_cond_sql = f"NOT (t.`{hash_col}` <=> s.`{hash_col}`)"
@@ -323,7 +323,7 @@ def _track_history_process_batch(
             f"({cond_keys_sql}) AND t.`{current_col}` = true",
         )
         .whenMatchedUpdate(
-            condition=F.expr(change_cond_sql),
+            condition=change_cond_sql,
             set={
                 expiry_col: ts_col,
                 current_col: F.lit(False),
@@ -332,11 +332,7 @@ def _track_history_process_batch(
         .execute()
     )
 
-    tgt_current = (
-        _read_target_df(spark, target)
-        .where(F.col(current_col) == F.lit(True))
-        .select(*business_keys)
-    )
+    tgt_current = target_dt.toDF().where(F.col(current_col) == F.lit(True)).select(*business_keys)
 
     s = source_batch.alias("s")
     tcur = tgt_current.alias("tcur")
@@ -346,7 +342,7 @@ def _track_history_process_batch(
     rows_to_insert = joined.where(is_new_or_changed).select([s[c] for c in source_batch.columns])
 
     tgt_max_ver = (
-        _read_target_df(spark, target)
+        target_dt.toDF()
         .groupBy(*business_keys)
         .agg(F.max(F.col(version_col)).alias("__prev_version"))
     )
