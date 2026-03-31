@@ -779,7 +779,7 @@ def apply_change_tracking(
     *,
     change_tracking_mode: Union[ChangeTrackingMode, str, int],
     verbose: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Unified entry point for change-tracking writes.
 
