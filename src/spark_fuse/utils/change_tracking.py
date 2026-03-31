@@ -681,7 +681,7 @@ def apply_change_tracking(
     target: str,
     *,
     change_tracking_mode: Union[ChangeTrackingMode, str, int],
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     """Unified entry point for change-tracking writes.
 
