@@ -110,6 +110,24 @@ track_history_upsert(
 )
 ```
 
+### Default expiry value
+
+By default, open/current rows have `effective_end_ts = NULL`. Pass `default_expiry_value` to use a sentinel timestamp instead — handy for range filters and avoiding `COALESCE`:
+
+```python
+track_history_upsert(
+    spark,
+    spark.createDataFrame([Row(id=1, val="a")]),
+    "/tmp/track_history_sentinel_demo",
+    business_keys=["id"],
+    tracked_columns=["val"],
+    load_ts_expr="to_timestamp('2024-01-01 00:00:00')",
+    default_expiry_value="9999-12-31",
+)
+```
+
+Accepts a string (cast to timestamp) or a PySpark `Column`. Closed rows always receive the load timestamp regardless of this setting.
+
 ## Unified dispatcher and writer sugar
 
 Use `apply_change_tracking` to switch between strategies with a shared signature:

@@ -287,6 +287,7 @@ def _track_history_process_batch(
     version_col: str,
     hash_col: str,
     ts_col: F.Column,
+    open_expiry: F.Column,
     cond_keys_sql: str,
     create_if_not_exists: bool,
     target_exists: bool,
@@ -299,7 +300,7 @@ def _track_history_process_batch(
             raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
         initial = (
             source_batch.withColumn(effective_col, ts_col)
-            .withColumn(expiry_col, F.lit(None).cast("timestamp"))
+            .withColumn(expiry_col, open_expiry)
             .withColumn(current_col, F.lit(True))
             .withColumn(version_col, F.lit(1).cast("bigint"))
         )
@@ -351,7 +352,7 @@ def _track_history_process_batch(
 
     to_insert = (
         rows_with_prev.withColumn(effective_col, ts_col)
-        .withColumn(expiry_col, F.lit(None).cast("timestamp"))
+        .withColumn(expiry_col, open_expiry)
         .withColumn(current_col, F.lit(True))
         .withColumn(
             version_col, F.coalesce(F.col("__prev_version"), F.lit(0)).cast("bigint") + F.lit(1)
@@ -507,6 +508,7 @@ def track_history_upsert(
     version_col: str = "version",
     hash_col: str = "row_hash",
     load_ts_expr: Optional[Union[str, F.Column]] = None,
+    default_expiry_value: Optional[Union[str, F.Column]] = None,
     null_key_policy: str = "error",  # "error" | "drop"
     create_if_not_exists: bool = True,
     allow_schema_evolution: bool = False,
@@ -538,6 +540,9 @@ def track_history_upsert(
             Timestamp to use for `effective_start_ts`. Accepts a PySpark Column or a SQL
             expression string (e.g., "current_timestamp()" or "to_timestamp('2020-01-01 00:00:00')").
             Defaults to `current_timestamp()`.
+        default_expiry_value: Value to use for `expiry_col` on open/current rows. Accepts a
+            PySpark Column or a string that will be cast to timestamp (e.g., ``"9999-12-31"``).
+            Defaults to ``None`` (i.e., ``NULL``).
         null_key_policy: Policy for null business keys in ``source_df``. Either ``"error"`` (default)
             or ``"drop"``.
         create_if_not_exists: When ``True`` (default), create the target table if it does not exist.
@@ -610,6 +615,14 @@ def track_history_upsert(
     else:
         ts_col = load_ts_expr
 
+    # Resolve the open-row expiry value
+    if default_expiry_value is None:
+        open_expiry = F.lit(None).cast("timestamp")
+    elif isinstance(default_expiry_value, str):
+        open_expiry = F.lit(default_expiry_value).cast("timestamp")
+    else:
+        open_expiry = default_expiry_value
+
     # Determine merge condition and columns used for writing.
     cond_keys_sql = " AND ".join([f"t.`{k}` <=> s.`{k}`" for k in business_keys])
     # Does target exist?
@@ -650,6 +663,7 @@ def track_history_upsert(
             version_col=version_col,
             hash_col=hash_col,
             ts_col=ts_col,
+            open_expiry=open_expiry,
             cond_keys_sql=cond_keys_sql,
             create_if_not_exists=create_flag,
             target_exists=target_exists,
