@@ -325,6 +325,7 @@ def _track_history_process_batch(
     create_if_not_exists: bool,
     target_exists: bool,
     allow_schema_evolution: bool,
+    order_by: Optional[Sequence[str]] = None,
     verbose: bool = False,
 ) -> bool:
     """Apply track-history semantics for a batch that has at most one row per business key."""
@@ -333,6 +334,26 @@ def _track_history_process_batch(
         if not create_if_not_exists:
             raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
         _LOGGER.info("Bootstrapping new target '%s' with initial data", target)
+
+        # When bootstrapping, the source_batch should already have at most one row per
+        # business key (due to the row_number assignment in track_history_upsert).
+        # However, if there are still duplicates (e.g., due to string ordering issues),
+        # we deduplicate to ensure only one row per business key.
+        # We don't need to consider hash here because the batch processing ensures
+        # at most one row per business key in the bootstrap batch (highest row_number
+        # which corresponds to the oldest version when processing oldest-first).
+        if order_by and len(order_by) > 0:
+            w = Window.partitionBy(*[F.col(k) for k in business_keys]).orderBy(
+                *[F.col(c).desc_nulls_last() for c in order_by]
+            )
+            source_batch = (
+                source_batch.withColumn("__rn", F.row_number().over(w))
+                .where(F.col("__rn") == 1)
+                .drop("__rn")
+            )
+        else:
+            source_batch = source_batch.dropDuplicates(list(business_keys))
+
         initial = (
             source_batch.withColumn(effective_col, ts_col)
             .withColumn(expiry_col, open_expiry)
@@ -764,6 +785,7 @@ def track_history_upsert(
             create_if_not_exists=create_flag,
             target_exists=target_exists,
             allow_schema_evolution=allow_schema_evolution,
+            order_by=order_by,
             verbose=verbose,
         )
         create_flag = False

@@ -1164,3 +1164,176 @@ def test_track_history_default_expiry_value_none_is_null(spark, tmp_path: Path):
     current = out.filter("is_current = true").collect()
     assert len(current) == 1
     assert current[0]["effective_end_ts"] is None
+
+
+def test_track_history_bootstrap_dedup_same_values_with_order_by(spark, tmp_path: Path):
+    """When target doesn't exist and source has multiple rows with same business key
+    and same tracked values, bootstrap should deduplicate to one row."""
+    target = str(tmp_path / "th_bootstrap_dedup_same")
+
+    # Multiple rows for same business key with identical tracked values
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},
+            {"id": 1, "val": "a", "ts": 2},
+            {"id": 1, "val": "a", "ts": 3},
+        ]
+    )
+
+    track_history_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    out = spark.read.format("delta").load(target)
+    # Should have exactly one row, not duplicates
+    assert out.count() == 1
+    assert out.filter("id = 1 and is_current = true").count() == 1
+    row = out.collect()[0]
+    assert row["val"] == "a"
+    assert row["version"] == 1
+
+
+def test_track_history_bootstrap_different_values_creates_history(spark, tmp_path: Path):
+    """When target doesn't exist and source has multiple rows with same business key
+    but different tracked values, all versions should be preserved as SCD2 history."""
+    target = str(tmp_path / "th_bootstrap_diff_values")
+
+    # Multiple rows for same business key with different tracked values
+    # SCD2 should preserve all versions as history
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},
+            {"id": 1, "val": "b", "ts": 2},
+            {"id": 1, "val": "c", "ts": 3},
+        ]
+    )
+
+    track_history_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    out = spark.read.format("delta").load(target)
+    # Should have 3 rows (SCD2 preserves all versions)
+    # This matches the existing test_track_history_upsert_multiple_versions_same_batch behavior
+    assert out.filter("id = 1").count() == 3
+    assert out.filter("id = 1 and is_current = true").count() == 1
+    versions = out.where("id = 1").orderBy("version").collect()
+    assert [row.version for row in versions] == [1, 2, 3]
+    # Latest value (ts=3) should be current
+    assert versions[-1].val == "c"
+    # Oldest value (ts=1) should be version 1
+    assert versions[0].val == "a"
+
+
+def test_track_history_bootstrap_dedup_multiple_keys_mixed_values(spark, tmp_path: Path):
+    """Bootstrap deduplication should work correctly with multiple business keys
+    and mixed tracked values (some same, some different)."""
+    target = str(tmp_path / "th_bootstrap_multi_keys")
+
+    # Multiple rows for different business keys
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},
+            {"id": 1, "val": "a", "ts": 2},  # same value for id=1 -> deduped
+            {"id": 2, "val": "b", "ts": 1},
+            {"id": 2, "val": "c", "ts": 2},  # different value for id=2 -> creates history
+            {"id": 3, "val": "d", "ts": 1},
+        ]
+    )
+
+    track_history_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    out = spark.read.format("delta").load(target)
+    # id=1: 1 row (same value deduped)
+    # id=2: 2 rows (different values create history)
+    # id=3: 1 row
+    assert out.filter("id = 1").count() == 1
+    assert out.filter("id = 2").count() == 2
+    assert out.filter("id = 3").count() == 1
+    assert out.filter("is_current = true").count() == 3
+
+    # Check specific values
+    rows = {row["id"]: row for row in out.filter("is_current = true").collect()}
+    assert rows[1]["val"] == "a"  # deduped, same value
+    assert rows[2]["val"] == "c"  # latest value (ts=2)
+    assert rows[3]["val"] == "d"
+
+
+def test_track_history_bootstrap_dedup_without_order_by(spark, tmp_path: Path):
+    """Bootstrap deduplication should work when order_by is not specified."""
+    target = str(tmp_path / "th_bootstrap_dedup_no_order")
+
+    # Multiple rows for same business key, no order_by
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a"},
+            {"id": 1, "val": "a"},
+            {"id": 1, "val": "a"},
+        ]
+    )
+
+    track_history_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    out = spark.read.format("delta").load(target)
+    # Should have exactly one row
+    assert out.count() == 1
+    assert out.filter("is_current = true").count() == 1
+
+
+def test_track_history_string_order_by_correct_dedup(spark, tmp_path: Path):
+    """Test that string ordering doesn't cause incorrect deduplication.
+    This tests the fix for string-based order_by columns."""
+    target = str(tmp_path / "th_string_order_by")
+
+    # String commit versions that would sort incorrectly lexicographically
+    df = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "commit_version": "100"},  # numeric: 100
+            {"id": 1, "val": "a", "commit_version": "99"},  # numeric: 99 (smaller)
+            {"id": 1, "val": "a", "commit_version": "200"},  # numeric: 200 (largest)
+        ]
+    )
+
+    # Using string order_by - lexicographic order: "100" < "200" < "99"
+    # But with bootstrap dedup, we should still get only one row
+    track_history_upsert(
+        spark,
+        df,
+        target,
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["commit_version"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    out = spark.read.format("delta").load(target)
+    # Bootstrap deduplication ensures only one row per business key
+    assert out.count() == 1
+    assert out.filter("is_current = true").count() == 1
