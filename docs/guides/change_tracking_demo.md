@@ -158,6 +158,53 @@ spark.range(2).toDF("id").write.change_tracking.options(
 ).table("catalog.schema.dim_id")
 ```
 
+## Verbose logging
+
+All change-tracking functions accept a `verbose: bool = False` parameter. When enabled, operational details are logged at INFO level:
+
+```python
+current_only_upsert(
+    spark,
+    source_df,
+    target_path,
+    business_keys=["id"],
+    tracked_columns=["val"],
+    order_by=["ts"],
+    verbose=True,
+)
+```
+
+Example output:
+
+```
+spark_fuse.utils.change_tracking - current_only_upsert: target=/tmp/target, business_keys=['id'], tracked_columns=['val'], hash_col=row_hash
+spark_fuse.utils.change_tracking - Source rows after deduplication: 1000
+spark_fuse.utils.change_tracking - Target '/tmp/target' exists, executing merge
+spark_fuse.utils.change_tracking - Merge executed on '/tmp/target'
+```
+
+For `track_history_upsert`, you'll see batch progress:
+
+```
+spark_fuse.utils.change_tracking - track_history_upsert: target=/tmp/target, business_keys=['id'], tracked_columns=['val'], effective_col=effective_start_ts, expiry_col=effective_end_ts, current_col=is_current, version_col=version, hash_col=row_hash
+spark_fuse.utils.change_tracking - Target '/tmp/target' exists
+spark_fuse.utils.change_tracking - Processing 3 batches (max_seq=3)
+spark_fuse.utils.change_tracking - Processing batch 1/3
+spark_fuse.utils.change_tracking - Running merge on existing target '/tmp/target'
+spark_fuse.utils.change_tracking - Rows to insert: 50
+spark_fuse.utils.change_tracking - Processing batch 2/3
+...
+```
+
+The `verbose` parameter is also available on the fluent writer:
+
+```python
+spark.range(2).toDF("id").write.change_tracking.options(
+    change_tracking_mode="current_only",
+    change_tracking_options={"business_keys": ["id"]},
+).table("catalog.schema.dim_id", verbose=True)
+```
+
 ## Notebook walkthrough
 
 - [Change Tracking Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/change_tracking_demo.ipynb)

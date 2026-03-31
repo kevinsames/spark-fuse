@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from enum import Enum
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Union
@@ -8,6 +9,8 @@ from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql.readwriter import DataFrameWriter
+
+_LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "ChangeTrackingMode",
@@ -24,6 +27,20 @@ __all__ = [
 # Delimiter used for stable row-hash concatenation (Unit Separator)
 UNIT_SEPARATOR = "\u241f"
 CHANGE_TRACKING_SEQUENCE_COL = "__change_tracking_seq"
+
+
+def _configure_verbose(verbose: bool) -> None:
+    """Configure logging for verbose output.
+
+    When verbose is True and no handlers are configured, adds a StreamHandler
+    with a simple format. Sets the logger level to INFO.
+    """
+    if verbose and not _LOGGER.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(name)s - %(message)s"))
+        _LOGGER.addHandler(handler)
+    if verbose:
+        _LOGGER.setLevel(logging.INFO)
 
 
 class ChangeTrackingMode(str, Enum):
@@ -143,14 +160,21 @@ class ChangeTrackingWriteBuilder:
         self._options.clear()
         return self
 
-    def table(self, name: str, **options: Any) -> None:
+    def table(self, name: str, verbose: bool = False, **options: Any) -> None:
+        """Write to target table with change tracking semantics.
+
+        Args:
+            name: Target table name or Delta path.
+            verbose: When True, log operational details at INFO level.
+            **options: Additional change tracking options.
+        """
         if options:
             self.options(**options)
         # Use a copy so that downstream mutations do not affect stored state.
         payload = dict(self._options)
         try:
             apply_change_tracking_from_options(
-                spark=self._spark, source_df=self._df, target=name, options=payload
+                spark=self._spark, source_df=self._df, target=name, options=payload, verbose=verbose
             )
         finally:
             self.clear()
@@ -197,6 +221,7 @@ def apply_change_tracking_from_options(
     target: str,
     *,
     options: Mapping[str, Any],
+    verbose: bool = False,
 ) -> None:
     """Route the write based on ``df.write``-style options.
 
@@ -206,13 +231,21 @@ def apply_change_tracking_from_options(
       - ``change_tracking_mode``: accepts ``1``/``2`` or ``current_only``/``track_history``.
       - Strategy options via ``current_only_options``/``track_history_options`` or the generic
         ``change_tracking_options`` key.
-    """
 
+    Args:
+        spark: SparkSession used to read/write Delta tables.
+        source_df: DataFrame containing incoming records.
+        target: Unity Catalog table name or Delta path.
+        options: Options mapping containing change_tracking_mode and optional kwargs.
+        verbose: When True, log operational details at INFO level.
+    """
     change_tracking_mode, change_tracking_kwargs = _extract_tracking_kwargs_from_options(options)
+    # Extract verbose from kwargs if present (for backwards compatibility with options dict)
+    verbose = change_tracking_kwargs.pop("verbose", verbose)
     if change_tracking_mode == ChangeTrackingMode.CURRENT_ONLY:
-        current_only_upsert(spark, source_df, target, **change_tracking_kwargs)
+        current_only_upsert(spark, source_df, target, verbose=verbose, **change_tracking_kwargs)
     else:
-        track_history_upsert(spark, source_df, target, **change_tracking_kwargs)
+        track_history_upsert(spark, source_df, target, verbose=verbose, **change_tracking_kwargs)
 
 
 def _is_delta_path(identifier: str) -> bool:
@@ -292,12 +325,14 @@ def _track_history_process_batch(
     create_if_not_exists: bool,
     target_exists: bool,
     allow_schema_evolution: bool,
+    verbose: bool = False,
 ) -> bool:
     """Apply track-history semantics for a batch that has at most one row per business key."""
 
     if not target_exists:
         if not create_if_not_exists:
             raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
+        _LOGGER.info("Bootstrapping new target '%s' with initial data", target)
         initial = (
             source_batch.withColumn(effective_col, ts_col)
             .withColumn(expiry_col, open_expiry)
@@ -307,6 +342,7 @@ def _track_history_process_batch(
         _write_append(initial, target, merge_schema=allow_schema_evolution)
         return True
 
+    _LOGGER.info("Running merge on existing target '%s'", target)
     target_dt = _delta_table(spark, target)
     target_cols = set(target_dt.toDF().columns)
 
@@ -341,6 +377,9 @@ def _track_history_process_batch(
     joined = s.join(tcur, on=join_cond, how="left")
     is_new_or_changed = tcur[business_keys[0]].isNull()
     rows_to_insert = joined.where(is_new_or_changed).select([s[c] for c in source_batch.columns])
+
+    insert_count = rows_to_insert.count()
+    _LOGGER.info("Rows to insert: %d", insert_count)
 
     tgt_max_ver = (
         target_dt.toDF()
@@ -377,6 +416,7 @@ def current_only_upsert(
     null_key_policy: str = "error",  # "error" | "drop"
     create_if_not_exists: bool = True,
     allow_schema_evolution: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Implement :class:`ChangeTrackingMode.CURRENT_ONLY`.
 
@@ -388,7 +428,22 @@ def current_only_upsert(
 
     When ``allow_schema_evolution`` is ``True`` we temporarily enable Delta auto-merge so new source
     columns are added to the target on demand.
+
+    Args:
+        spark: SparkSession used to read/write Delta tables.
+        source_df: DataFrame containing incoming records.
+        target: Unity Catalog table name or Delta path.
+        business_keys: Columns that uniquely identify an entity (merge condition).
+        tracked_columns: Columns whose changes trigger an update. Defaults to all non-key columns.
+        dedupe_keys: Columns used to de-duplicate input before merge. Defaults to ``business_keys``.
+        order_by: Columns used to choose the most recent record per ``dedupe_keys``.
+        hash_col: Name of the hash column used to detect row changes.
+        null_key_policy: Policy for null business keys. Either ``"error"`` or ``"drop"``.
+        create_if_not_exists: When ``True``, create the target table if it does not exist.
+        allow_schema_evolution: When ``True``, enable Delta schema evolution for new columns.
+        verbose: When ``True``, log operational details at INFO level.
     """
+    _configure_verbose(verbose)
 
     if not business_keys:
         raise ValueError("business_keys must be a non-empty sequence")
@@ -436,6 +491,19 @@ def current_only_upsert(
     else:
         source_df = source_df.dropDuplicates(list(dedupe_keys))
 
+    # Log configuration summary
+    _LOGGER.info(
+        "current_only_upsert: target=%s, business_keys=%s, tracked_columns=%s, hash_col=%s",
+        target,
+        business_keys,
+        list(tracked_columns),
+        hash_col,
+    )
+
+    # Count source rows after dedup
+    source_row_count = source_df.count()
+    _LOGGER.info("Source rows after deduplication: %d", source_row_count)
+
     # Hash tracked columns
     hash_expr_inputs = [_coalesce_cast_to_string(F.col(c)) for c in tracked_columns]
     row_hash_expr = F.sha2(F.concat_ws(UNIT_SEPARATOR, *hash_expr_inputs), 256)
@@ -451,8 +519,11 @@ def current_only_upsert(
     if not target_exists:
         if not create_if_not_exists:
             raise ValueError(f"Target '{target}' does not exist and create_if_not_exists=False")
+        _LOGGER.info("Target '%s' does not exist, creating new table", target)
         _write_append(src_hashed, target, merge_schema=allow_schema_evolution)
         return
+
+    _LOGGER.info("Target '%s' exists, executing merge", target)
 
     # MERGE: update when changed, insert when new
     dt = _delta_table(spark, target)
@@ -492,6 +563,8 @@ def current_only_upsert(
             .execute()
         )
 
+    _LOGGER.info("Merge executed on '%s'", target)
+
 
 def track_history_upsert(
     spark: SparkSession,
@@ -512,6 +585,7 @@ def track_history_upsert(
     null_key_policy: str = "error",  # "error" | "drop"
     create_if_not_exists: bool = True,
     allow_schema_evolution: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Implement :class:`ChangeTrackingMode.TRACK_HISTORY`.
 
@@ -549,7 +623,9 @@ def track_history_upsert(
         allow_schema_evolution: When ``True``, append operations use Delta schema evolution so new
             columns added to the source DataFrame are automatically added to the target table. Only
             affects write paths (initial bootstrap + inserts).
+        verbose: When ``True``, log operational details at INFO level.
     """
+    _configure_verbose(verbose)
 
     if not business_keys:
         raise ValueError("business_keys must be a non-empty sequence")
@@ -600,6 +676,20 @@ def track_history_upsert(
             CHANGE_TRACKING_SEQUENCE_COL, F.lit(1)
         )
 
+    # Log configuration summary
+    _LOGGER.info(
+        "track_history_upsert: target=%s, business_keys=%s, tracked_columns=%s, "
+        "effective_col=%s, expiry_col=%s, current_col=%s, version_col=%s, hash_col=%s",
+        target,
+        business_keys,
+        list(tracked_columns),
+        effective_col,
+        expiry_col,
+        current_col,
+        version_col,
+        hash_col,
+    )
+
     # Compute deterministic row hash over tracked columns
     hash_expr_inputs = [_coalesce_cast_to_string(F.col(c)) for c in tracked_columns]
     row_hash_expr = F.sha2(
@@ -632,6 +722,8 @@ def track_history_upsert(
     except Exception:
         target_exists = False
 
+    _LOGGER.info("Target '%s' %s", target, "exists" if target_exists else "does not exist")
+
     # Split into per-rank batches (rank 1 == latest). Process from oldest -> newest.
     should_cache = bool(order_by)
     if should_cache:
@@ -646,8 +738,12 @@ def track_history_upsert(
             source_hashed.unpersist()
         return
 
+    # Log source row count and batch count
+    _LOGGER.info("Processing %d batches (max_seq=%d)", int(max_seq_val), int(max_seq_val))
+
     create_flag = create_if_not_exists
     for seq in range(int(max_seq_val), 0, -1):
+        _LOGGER.info("Processing batch %d/%d", int(max_seq_val) - seq + 1, int(max_seq_val))
         batch = source_hashed.where(F.col(CHANGE_TRACKING_SEQUENCE_COL) == seq).drop(
             CHANGE_TRACKING_SEQUENCE_COL
         )
@@ -668,6 +764,7 @@ def track_history_upsert(
             create_if_not_exists=create_flag,
             target_exists=target_exists,
             allow_schema_evolution=allow_schema_evolution,
+            verbose=verbose,
         )
         create_flag = False
 
@@ -682,6 +779,8 @@ def apply_change_tracking(
     *,
     change_tracking_mode: Union[ChangeTrackingMode, str, int],
     **kwargs: Any,
+    verbose: bool = False,
+    **kwargs,
 ) -> None:
     """Unified entry point for change-tracking writes.
 
@@ -689,10 +788,17 @@ def apply_change_tracking(
       - :class:`ChangeTrackingMode`
       - ``"current_only"`` / ``"track_history"``
       - ``1`` / ``2`` (handy when passing options via strings)
-    """
 
+    Args:
+        spark: SparkSession used to read/write Delta tables.
+        source_df: DataFrame containing incoming records.
+        target: Unity Catalog table name or Delta path.
+        change_tracking_mode: The change tracking mode to use.
+        verbose: When ``True``, log operational details at INFO level.
+        **kwargs: Additional arguments passed to the underlying upsert function.
+    """
     resolved = _resolve_mode(change_tracking_mode)
     if resolved == ChangeTrackingMode.CURRENT_ONLY:
-        return current_only_upsert(spark, source_df, target, **kwargs)
+        return current_only_upsert(spark, source_df, target, verbose=verbose, **kwargs)
     else:
-        return track_history_upsert(spark, source_df, target, **kwargs)
+        return track_history_upsert(spark, source_df, target, verbose=verbose, **kwargs)

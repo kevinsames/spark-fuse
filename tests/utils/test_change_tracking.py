@@ -312,7 +312,7 @@ def test_change_tracking_writer_uses_apply(monkeypatch, spark, tmp_path: Path):
     target = str(tmp_path / "writer_target")
     observed = {}
 
-    def fake_apply(*, spark, source_df, target, options):
+    def fake_apply(*, spark, source_df, target, options, verbose=False):
         observed["spark"] = spark
         observed["source"] = source_df
         observed["target"] = target
@@ -381,7 +381,7 @@ def test_dataframe_change_tracking_property(monkeypatch, spark, tmp_path: Path):
     target = str(tmp_path / "df_property_target")
     calls = []
 
-    def fake_apply(*, spark, source_df, target, options):
+    def fake_apply(*, spark, source_df, target, options, verbose=False):
         calls.append((spark, source_df, target, options))
 
     monkeypatch.setattr(change_tracking, "apply_change_tracking_from_options", fake_apply)
@@ -806,7 +806,7 @@ def test_builder_table_clears_after_call(monkeypatch, spark, tmp_path: Path):
     builder = ChangeTrackingWriteBuilder(df)
     builder.option("change_tracking_mode", "current_only")
 
-    def fake_apply(*, spark, source_df, target, options):
+    def fake_apply(*, spark, source_df, target, options, verbose=False):
         pass
 
     monkeypatch.setattr(change_tracking, "apply_change_tracking_from_options", fake_apply)
