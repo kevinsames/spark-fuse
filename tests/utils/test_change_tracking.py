@@ -376,6 +376,76 @@ def test_track_history_upsert_idempotent(spark, tmp_path: Path):
     assert rows[2]["version"] == 1
 
 
+def test_track_history_three_cycles_no_duplicates(spark, tmp_path: Path):
+    """Bootstrap -> change -> same data: third call must be a no-op (no duplicates)."""
+    target = str(tmp_path / "three_cycles_no_dup")
+
+    common_kwargs = dict(
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    # Cycle 1: bootstrap
+    df1 = spark.createDataFrame([{"id": 1, "val": "a", "ts": 1}])
+    track_history_upsert(spark, df1, target, **common_kwargs)
+    out1 = spark.read.format("delta").load(target)
+    assert out1.count() == 1
+    assert out1.filter("is_current = true").count() == 1
+
+    # Cycle 2: update with changed data
+    df2 = spark.createDataFrame([{"id": 1, "val": "b", "ts": 2}])
+    track_history_upsert(spark, df2, target, **{**common_kwargs, "load_ts_expr": "to_timestamp('2020-01-02 00:00:00')"})
+    out2 = spark.read.format("delta").load(target)
+    assert out2.count() == 2, f"Expected 2 rows after first update, got {out2.count()}"
+    assert out2.filter("is_current = true").count() == 1
+    current2 = _rows_by_key(out2.filter("is_current = true"), "id")
+    assert current2[1]["val"] == "b"
+    assert current2[1]["version"] == 2
+
+    # Cycle 3: same data as cycle 2 — must be a no-op
+    df3 = spark.createDataFrame([{"id": 1, "val": "b", "ts": 3}])
+    track_history_upsert(spark, df3, target, **{**common_kwargs, "load_ts_expr": "to_timestamp('2020-01-03 00:00:00')"})
+    out3 = spark.read.format("delta").load(target)
+    assert out3.count() == 2, f"Expected 2 rows after idempotent call, got {out3.count()}"
+    assert out3.filter("is_current = true").count() == 1
+    current3 = _rows_by_key(out3.filter("is_current = true"), "id")
+    assert current3[1]["val"] == "b"
+    assert current3[1]["version"] == 2
+
+
+def test_track_history_three_cycles_with_changes(spark, tmp_path: Path):
+    """Bootstrap -> change -> change: each cycle creates a new version."""
+    target = str(tmp_path / "three_cycles_changes")
+
+    common_kwargs = dict(
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+    )
+
+    # Cycle 1: bootstrap
+    df1 = spark.createDataFrame([{"id": 1, "val": "a", "ts": 1}])
+    track_history_upsert(spark, df1, target, load_ts_expr="to_timestamp('2020-01-01')", **common_kwargs)
+
+    # Cycle 2: change
+    df2 = spark.createDataFrame([{"id": 1, "val": "b", "ts": 2}])
+    track_history_upsert(spark, df2, target, load_ts_expr="to_timestamp('2020-01-02')", **common_kwargs)
+
+    # Cycle 3: another change
+    df3 = spark.createDataFrame([{"id": 1, "val": "c", "ts": 3}])
+    track_history_upsert(spark, df3, target, load_ts_expr="to_timestamp('2020-01-03')", **common_kwargs)
+
+    out = spark.read.format("delta").load(target)
+    assert out.count() == 3, f"Expected 3 total rows, got {out.count()}"
+    assert out.filter("is_current = true").count() == 1
+    current = _rows_by_key(out.filter("is_current = true"), "id")
+    assert current[1]["val"] == "c"
+    assert current[1]["version"] == 3
+    assert out.filter("is_current = false").count() == 2
+
+
 def test_dataframe_change_tracking_property(monkeypatch, spark, tmp_path: Path):
     df = spark.createDataFrame([{"id": 1, "val": "a"}])
     target = str(tmp_path / "df_property_target")

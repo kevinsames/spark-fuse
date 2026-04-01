@@ -390,7 +390,8 @@ def _track_history_process_batch(
         .execute()
     )
 
-    tgt_current = target_dt.toDF().where(F.col(current_col) == F.lit(True)).select(*business_keys)
+    tgt_after_merge = _read_target_df(spark, target)
+    tgt_current = tgt_after_merge.where(F.col(current_col) == F.lit(True)).select(*business_keys)
 
     s = source_batch.alias("s")
     tcur = tgt_current.alias("tcur")
@@ -401,9 +402,11 @@ def _track_history_process_batch(
 
     insert_count = rows_to_insert.count()
     _LOGGER.info("Rows to insert: %d", insert_count)
+    if insert_count == 0:
+        return True
 
     tgt_max_ver = (
-        target_dt.toDF()
+        tgt_after_merge
         .groupBy(*business_keys)
         .agg(F.max(F.col(version_col)).alias("__prev_version"))
     )
