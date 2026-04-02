@@ -367,6 +367,11 @@ def _track_history_process_batch(
     target_dt = _delta_table(spark, target)
     target_cols = set(target_dt.toDF().columns)
 
+    # Add ts_col to source_batch with a unique alias to avoid ambiguity in MERGE
+    # when ts_col references a column that exists in both source and target
+    ts_alias = "__merge_ts"
+    source_batch_with_ts = source_batch.withColumn(ts_alias, ts_col)
+
     if hash_col in target_cols:
         # Idempotency guard: skip source rows whose (business_key, hash) already exists
         # in the target (any version). This prevents re-processing the same changes_df
@@ -374,12 +379,12 @@ def _track_history_process_batch(
         existing_hashes = _read_target_df(spark, target).select(
             *[F.col(k) for k in business_keys], F.col(hash_col)
         )
-        source_batch = source_batch.join(
+        source_batch_with_ts = source_batch_with_ts.join(
             existing_hashes,
             on=list(business_keys) + [hash_col],
             how="left_anti",
         )
-        if source_batch.limit(1).count() == 0:
+        if source_batch_with_ts.limit(1).count() == 0:
             _LOGGER.info("Batch skipped — all row hashes already present in target")
             return True
 
@@ -392,13 +397,13 @@ def _track_history_process_batch(
     (
         target_dt.alias("t")
         .merge(
-            source_batch.alias("s"),
+            source_batch_with_ts.alias("s"),
             f"({cond_keys_sql}) AND t.`{current_col}` = true",
         )
         .whenMatchedUpdate(
             condition=change_cond_sql,
             set={
-                expiry_col: ts_col,
+                expiry_col: F.col(f"s.{ts_alias}"),
                 current_col: F.lit(False),
             },
         )
