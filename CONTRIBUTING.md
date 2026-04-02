@@ -37,6 +37,48 @@ Thank you for your interest in contributing! This guide covers the local dev set
 - Ruff rules (line length 100) enforced in CI.
 - Add/adjust tests alongside changes.
 
+## Commit Messages
+This project follows [Conventional Commits](https://www.conventionalcommits.org/). Commit messages are validated automatically by pre-commit hooks.
+
+**Format:**
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types:**
+- `feat:` - New feature (correlates with MINOR version)
+- `fix:` - Bug fix (correlates with PATCH version)
+- `docs:` - Documentation changes
+- `style:` - Code style changes (formatting, whitespace)
+- `refactor:` - Code refactoring without feature/fix
+- `perf:` - Performance improvements
+- `test:` - Adding or updating tests
+- `build:` - Build system or dependency changes
+- `ci:` - CI/CD configuration changes
+- `chore:` - Other changes (maintenance, tooling)
+- `revert:` - Revert a previous commit
+
+**Breaking changes:**
+- Use `!` after type/scope: `feat!: remove deprecated API`
+- Or add `BREAKING CHANGE:` in the footer
+
+**Examples:**
+```
+feat: add Polish language support
+fix(api): prevent racing of requests
+docs: correct spelling of CHANGELOG
+feat(api)!: send email when product ships
+
+BREAKING CHANGE: The email API has changed
+```
+
+**Setup:**
+Run `pre-commit install` to enable the commit message hook.
+
 ## Adding a Connector
 1. Create a module under `src/spark_fuse/io/your_connector.py`.
 2. Subclass `Connector` from `io/base.py` and implement:
