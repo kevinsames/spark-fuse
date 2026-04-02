@@ -396,7 +396,12 @@ def test_track_history_three_cycles_no_duplicates(spark, tmp_path: Path):
 
     # Cycle 2: update with changed data
     df2 = spark.createDataFrame([{"id": 1, "val": "b", "ts": 2}])
-    track_history_upsert(spark, df2, target, **{**common_kwargs, "load_ts_expr": "to_timestamp('2020-01-02 00:00:00')"})
+    track_history_upsert(
+        spark,
+        df2,
+        target,
+        **{**common_kwargs, "load_ts_expr": "to_timestamp('2020-01-02 00:00:00')"},
+    )
     out2 = spark.read.format("delta").load(target)
     assert out2.count() == 2, f"Expected 2 rows after first update, got {out2.count()}"
     assert out2.filter("is_current = true").count() == 1
@@ -406,13 +411,61 @@ def test_track_history_three_cycles_no_duplicates(spark, tmp_path: Path):
 
     # Cycle 3: same data as cycle 2 — must be a no-op
     df3 = spark.createDataFrame([{"id": 1, "val": "b", "ts": 3}])
-    track_history_upsert(spark, df3, target, **{**common_kwargs, "load_ts_expr": "to_timestamp('2020-01-03 00:00:00')"})
+    track_history_upsert(
+        spark,
+        df3,
+        target,
+        **{**common_kwargs, "load_ts_expr": "to_timestamp('2020-01-03 00:00:00')"},
+    )
     out3 = spark.read.format("delta").load(target)
     assert out3.count() == 2, f"Expected 2 rows after idempotent call, got {out3.count()}"
     assert out3.filter("is_current = true").count() == 1
     current3 = _rows_by_key(out3.filter("is_current = true"), "id")
     assert current3[1]["val"] == "b"
     assert current3[1]["version"] == 2
+
+
+def test_track_history_multi_batch_reprocessing_idempotent(spark, tmp_path: Path):
+    """Re-processing a multi-version changes_df (max_seq >= 2) must be a no-op.
+
+    Reproduces the bug where batch 1 (old data) incorrectly expires current rows
+    whose hashes differ because they were updated by batch 2 in the first run.
+    """
+    target = str(tmp_path / "multi_batch_idempotent")
+    common_kwargs = dict(
+        business_keys=["id"],
+        tracked_columns=["val"],
+        order_by=["ts"],
+        load_ts_expr="to_timestamp('2020-01-01 00:00:00')",
+    )
+
+    # changes_df has 2 versions per key (simulating CDC with old + new in same batch)
+    changes = spark.createDataFrame(
+        [
+            {"id": 1, "val": "a", "ts": 1},  # older version
+            {"id": 1, "val": "b", "ts": 2},  # newer version
+            {"id": 2, "val": "x", "ts": 1},  # older version
+            {"id": 2, "val": "y", "ts": 2},  # newer version
+        ]
+    )
+
+    # First run: should create 2 historical rows + 2 current rows = 4 rows total
+    track_history_upsert(spark, changes, target, **common_kwargs)
+    out1 = spark.read.format("delta").load(target)
+    assert out1.count() == 4, f"Expected 4 rows after first run, got {out1.count()}"
+    assert out1.filter("is_current = true").count() == 2
+    current1 = _rows_by_key(out1.filter("is_current = true"), "id")
+    assert current1[1]["val"] == "b"
+    assert current1[2]["val"] == "y"
+
+    # Second run: same data — must be a complete no-op
+    track_history_upsert(spark, changes, target, **common_kwargs)
+    out2 = spark.read.format("delta").load(target)
+    assert out2.count() == 4, f"Duplicates on re-processing: 4 -> {out2.count()}"
+    assert out2.filter("is_current = true").count() == 2
+    current2 = _rows_by_key(out2.filter("is_current = true"), "id")
+    assert current2[1]["val"] == "b"
+    assert current2[2]["val"] == "y"
 
 
 def test_track_history_three_cycles_with_changes(spark, tmp_path: Path):
@@ -427,15 +480,21 @@ def test_track_history_three_cycles_with_changes(spark, tmp_path: Path):
 
     # Cycle 1: bootstrap
     df1 = spark.createDataFrame([{"id": 1, "val": "a", "ts": 1}])
-    track_history_upsert(spark, df1, target, load_ts_expr="to_timestamp('2020-01-01')", **common_kwargs)
+    track_history_upsert(
+        spark, df1, target, load_ts_expr="to_timestamp('2020-01-01')", **common_kwargs
+    )
 
     # Cycle 2: change
     df2 = spark.createDataFrame([{"id": 1, "val": "b", "ts": 2}])
-    track_history_upsert(spark, df2, target, load_ts_expr="to_timestamp('2020-01-02')", **common_kwargs)
+    track_history_upsert(
+        spark, df2, target, load_ts_expr="to_timestamp('2020-01-02')", **common_kwargs
+    )
 
     # Cycle 3: another change
     df3 = spark.createDataFrame([{"id": 1, "val": "c", "ts": 3}])
-    track_history_upsert(spark, df3, target, load_ts_expr="to_timestamp('2020-01-03')", **common_kwargs)
+    track_history_upsert(
+        spark, df3, target, load_ts_expr="to_timestamp('2020-01-03')", **common_kwargs
+    )
 
     out = spark.read.format("delta").load(target)
     assert out.count() == 3, f"Expected 3 total rows, got {out.count()}"

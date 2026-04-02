@@ -368,6 +368,21 @@ def _track_history_process_batch(
     target_cols = set(target_dt.toDF().columns)
 
     if hash_col in target_cols:
+        # Idempotency guard: skip source rows whose (business_key, hash) already exists
+        # in the target (any version). This prevents re-processing the same changes_df
+        # from expiring current rows that were updated by later batches in a prior run.
+        existing_hashes = _read_target_df(spark, target).select(
+            *[F.col(k) for k in business_keys], F.col(hash_col)
+        )
+        source_batch = source_batch.join(
+            existing_hashes,
+            on=list(business_keys) + [hash_col],
+            how="left_anti",
+        )
+        if source_batch.limit(1).count() == 0:
+            _LOGGER.info("Batch skipped — all row hashes already present in target")
+            return True
+
         change_cond_sql = f"NOT (t.`{hash_col}` <=> s.`{hash_col}`)"
     else:
         change_cond_sql = (
@@ -405,10 +420,8 @@ def _track_history_process_batch(
     if insert_count == 0:
         return True
 
-    tgt_max_ver = (
-        tgt_after_merge
-        .groupBy(*business_keys)
-        .agg(F.max(F.col(version_col)).alias("__prev_version"))
+    tgt_max_ver = tgt_after_merge.groupBy(*business_keys).agg(
+        F.max(F.col(version_col)).alias("__prev_version")
     )
 
     rows_with_prev = rows_to_insert.join(tgt_max_ver, on=list(business_keys), how="left")
