@@ -50,3 +50,4 @@ logs/
 # Env files
 .env
 .env.*
+uv.lock
