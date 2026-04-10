@@ -5,7 +5,7 @@ from typing import Any, Dict, Mapping, Optional
 from pyspark.sql import DataFrame
 from pyspark.sql.streaming import StreamingQuery
 
-from .change_tracking import apply_change_tracking_from_options
+from .change_tracking import apply_change_tracking
 
 __all__ = [
     "StreamingChangeTrackingWriter",
@@ -22,8 +22,8 @@ class StreamingChangeTrackingWriter:
 
     Args:
         target: Target table name or Delta path.
-        options: Change tracking options (must include ``change_tracking_mode`` and
-            ``business_keys``). Forwarded to :func:`apply_change_tracking_from_options`.
+        options: Flat change tracking options dict — must include ``change_tracking_mode`` and
+            ``business_keys`` plus any other kwargs accepted by the underlying upsert function.
     """
 
     def __init__(self, *, target: str, options: Dict[str, Any]) -> None:
@@ -32,11 +32,16 @@ class StreamingChangeTrackingWriter:
 
     def __call__(self, batch_df: DataFrame, batch_id: int) -> None:
         spark = batch_df.sparkSession
-        apply_change_tracking_from_options(
-            spark=spark,
-            source_df=batch_df,
-            target=self._target,
-            options=dict(self._options),
+        opts = dict(self._options)
+        mode = opts.pop("change_tracking_mode")
+        verbose = opts.pop("verbose", False)
+        apply_change_tracking(
+            spark,
+            batch_df,
+            self._target,
+            change_tracking_mode=mode,
+            verbose=verbose,
+            **opts,
         )
 
 

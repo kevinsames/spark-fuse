@@ -43,10 +43,12 @@ def test_streaming_writer_options_are_copied():
 def test_streaming_writer_call_delegates(monkeypatch):
     calls: list[Dict[str, Any]] = []
 
-    def fake_apply(spark, source_df, target, *, options, verbose=False):
-        calls.append({"source_df": source_df, "target": target, "options": options})
+    def fake_apply(spark, source_df, target, *, change_tracking_mode, verbose=False, **kwargs):
+        calls.append(
+            {"source_df": source_df, "target": target, "mode": change_tracking_mode, **kwargs}
+        )
 
-    monkeypatch.setattr(ct_streaming, "apply_change_tracking_from_options", fake_apply)
+    monkeypatch.setattr(ct_streaming, "apply_change_tracking", fake_apply)
 
     batch_df = MagicMock()
     batch_df.sparkSession = MagicMock()
@@ -60,18 +62,19 @@ def test_streaming_writer_call_delegates(monkeypatch):
     assert len(calls) == 1
     assert calls[0]["target"] == "tgt"
     assert calls[0]["source_df"] is batch_df
-    assert calls[0]["options"]["change_tracking_mode"] == "current_only"
+    assert calls[0]["mode"] == "current_only"
+    assert calls[0]["business_keys"] == ["id"]
 
 
 def test_streaming_writer_passes_independent_options_copy(monkeypatch):
     """Each __call__ invocation gets its own options copy (no cross-batch mutation)."""
     received: list[Dict[str, Any]] = []
 
-    def fake_apply(spark, source_df, target, *, options, verbose=False):
-        options["__mutated__"] = True
-        received.append(dict(options))
+    def fake_apply(spark, source_df, target, *, change_tracking_mode, verbose=False, **kwargs):
+        kwargs["__mutated__"] = True
+        received.append({"change_tracking_mode": change_tracking_mode, **kwargs})
 
-    monkeypatch.setattr(ct_streaming, "apply_change_tracking_from_options", fake_apply)
+    monkeypatch.setattr(ct_streaming, "apply_change_tracking", fake_apply)
 
     batch_df = MagicMock()
     batch_df.sparkSession = MagicMock()
@@ -295,13 +298,22 @@ def test_streaming_writer_options_forwarded(monkeypatch, spark, tmp_path: Path):
     _write_delta(spark, [(1, "a")], "id INT, val STRING", src)
 
     calls: list[Dict[str, Any]] = []
-    real_apply = ct_streaming.apply_change_tracking_from_options
+    real_apply = ct_streaming.apply_change_tracking
 
-    def capturing_apply(spark_session, source_df, target, *, options, verbose=False):
-        calls.append({"target": target, "options": dict(options)})
-        real_apply(spark_session, source_df, target, options=options, verbose=verbose)
+    def capturing_apply(
+        spark_session, source_df, target, *, change_tracking_mode, verbose=False, **kwargs
+    ):
+        calls.append({"target": target, "mode": change_tracking_mode, **kwargs})
+        real_apply(
+            spark_session,
+            source_df,
+            target,
+            change_tracking_mode=change_tracking_mode,
+            verbose=verbose,
+            **kwargs,
+        )
 
-    monkeypatch.setattr(ct_streaming, "apply_change_tracking_from_options", capturing_apply)
+    monkeypatch.setattr(ct_streaming, "apply_change_tracking", capturing_apply)
 
     change_tracking.enable_change_tracking_accessors(force=True)
     query = (
@@ -317,7 +329,7 @@ def test_streaming_writer_options_forwarded(monkeypatch, spark, tmp_path: Path):
 
     assert len(calls) >= 1
     assert all(c["target"] == tgt for c in calls)
-    assert all(c["options"]["change_tracking_mode"] == "current_only" for c in calls)
+    assert all(c["mode"] == "current_only" for c in calls)
 
 
 def test_datastream_writer_accessor_registered(spark, tmp_path: Path):
