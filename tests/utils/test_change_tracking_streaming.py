@@ -91,16 +91,17 @@ def test_streaming_writer_passes_independent_options_copy(monkeypatch):
     assert len(received) == 2
 
 
-def test_streaming_builder_rejects_batch_df(spark):
-    schema = "id INT, val STRING"
-    batch_df = spark.createDataFrame([], schema)
+def test_streaming_builder_rejects_batch_df():
+    batch_df = MagicMock()
+    batch_df.isStreaming = False
     with pytest.raises(ValueError, match="streaming DataFrame"):
         StreamingChangeTrackingBuilder(batch_df)
 
 
-def test_streaming_change_tracking_writer_fn(spark):
+def test_streaming_change_tracking_writer_fn():
     """streaming_change_tracking_writer raises ValueError on batch DataFrame."""
-    batch_df = spark.createDataFrame([], "id INT, val STRING")
+    batch_df = MagicMock()
+    batch_df.isStreaming = False
     with pytest.raises(ValueError, match="streaming DataFrame"):
         streaming_change_tracking_writer(batch_df)
 

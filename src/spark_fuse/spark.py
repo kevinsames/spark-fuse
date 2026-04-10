@@ -213,8 +213,9 @@ def _apply_delta_configs(builder: SparkSession.Builder) -> SparkSession.Builder:
 
             if not delta_ver:
                 if modern_runtime:
-                    # Keep Delta aligned to the exact Spark runtime for 4.x patch releases.
-                    delta_ver = ver
+                    # Prefer the installed delta-spark package version for 4.x; fall back to
+                    # the Spark version only when delta-spark is not installed as a Python package.
+                    delta_ver = _detect_delta_package_version() or ver
                 else:
                     delta_ver = _detect_delta_package_version() or DELTA_PYSPARK_COMPAT.get(
                         key, default_delta
