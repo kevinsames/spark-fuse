@@ -205,6 +205,147 @@ spark.range(2).toDF("id").write.change_tracking.options(
 ).table("catalog.schema.dim_id", verbose=True)
 ```
 
+## Streaming with `foreachBatch`
+
+Structured Streaming DataFrames cannot be written directly with the batch change tracking
+helpers. Instead, use `df.writeStream.change_tracking` — the streaming accessor delegates
+each micro-batch to the same batch helpers via `foreachBatch`, so all idempotency guarantees
+(row-hash deduplication for history mode, MERGE conditions for current-only mode) apply
+per micro-batch and provide effectively exactly-once semantics against Delta sinks.
+
+A checkpoint location is required for fault tolerance:
+
+```python
+from spark_fuse.utils import enable_change_tracking_accessors
+
+enable_change_tracking_accessors()
+
+# Current-only (Type 1) — keep one current row per key
+query = (
+    spark.readStream.format("delta").load("/mnt/bronze/events")
+    .writeStream.change_tracking
+    .options(
+        change_tracking_mode="current_only",
+        business_keys=["event_id"],
+    )
+    .toTable("/mnt/silver/events", checkpoint="/mnt/checkpoints/events")
+)
+query.awaitTermination()
+```
+
+```python
+# Track history (Type 2) — create new versions, close previous ones
+query = (
+    spark.readStream.format("delta").load("/mnt/bronze/customers")
+    .writeStream.change_tracking
+    .options(
+        change_tracking_mode="track_history",
+        business_keys=["customer_id"],
+    )
+    .toTable("/mnt/silver/customers", checkpoint="/mnt/checkpoints/customers")
+)
+query.awaitTermination()
+```
+
+For batch-style one-shot runs (e.g. in a scheduled job), pass `trigger={"availableNow": True}`:
+
+```python
+query = (
+    spark.readStream.format("delta").load("/mnt/bronze/orders")
+    .writeStream.change_tracking
+    .options(change_tracking_mode="current_only", business_keys=["order_id"])
+    .toTable(
+        "/mnt/silver/orders",
+        checkpoint="/mnt/checkpoints/orders",
+        trigger={"availableNow": True},
+    )
+)
+query.awaitTermination()
+```
+
+You can also construct a `StreamingChangeTrackingWriter` directly and pass it to
+`foreachBatch` for full control over the streaming query:
+
+```python
+from spark_fuse.utils import StreamingChangeTrackingWriter
+
+writer = StreamingChangeTrackingWriter(
+    target="/mnt/silver/orders",
+    options={"change_tracking_mode": "current_only", "business_keys": ["order_id"]},
+)
+
+(
+    spark.readStream.format("delta").load("/mnt/bronze/orders")
+    .writeStream
+    .option("checkpointLocation", "/mnt/checkpoints/orders")
+    .outputMode("update")
+    .trigger(availableNow=True)
+    .foreachBatch(writer)
+    .start()
+    .awaitTermination()
+)
+```
+
+## Declarative pipelines integration
+
+`spark_fuse` provides decorator helpers for [Spark Declarative Pipelines](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html)
+(`pyspark.pipelines`, available in PySpark >= 4.0). The decorators register pipeline
+tables and flows that apply change tracking merge semantics inside `foreachBatch`.
+
+### Two-step pattern — explicit table + flow
+
+Use `create_change_tracking_table` to declare the streaming target, then
+`@change_tracking_flow` to register the data flow:
+
+```python
+from spark_fuse.utils import change_tracking_flow, create_change_tracking_table
+
+create_change_tracking_table("catalog.schema.customers")
+
+@change_tracking_flow(
+    target="catalog.schema.customers",
+    change_tracking_mode="current_only",
+    business_keys=["customer_id"],
+)
+def customers_flow():
+    return spark.readStream.table("bronze.customers")
+```
+
+```python
+# Track history (Type 2)
+create_change_tracking_table("catalog.schema.customer_history")
+
+@change_tracking_flow(
+    target="catalog.schema.customer_history",
+    change_tracking_mode="track_history",
+    business_keys=["customer_id"],
+    tracked_columns=["name", "email", "tier"],
+)
+def customer_history_flow():
+    return spark.readStream.table("bronze.customers")
+```
+
+### Single-decorator pattern
+
+`@change_tracking_table` combines table creation and flow registration in one decorator:
+
+```python
+from spark_fuse.utils import change_tracking_table
+
+@change_tracking_table(
+    target="catalog.schema.orders",
+    change_tracking_mode="track_history",
+    business_keys=["order_id"],
+    comment="SCD Type 2 order history",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+def orders():
+    return spark.readStream.table("bronze.orders")
+```
+
+Both helpers require PySpark >= 4.0 with `pyspark.pipelines` present. Calling them in
+environments without SDP raises an `ImportError` with a clear message.
+
 ## Notebook walkthrough
 
 - [Change Tracking Demo](https://github.com/kevinsames/spark-fuse/blob/main/notebooks/demos/change_tracking_demo.ipynb)

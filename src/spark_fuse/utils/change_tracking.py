@@ -187,11 +187,12 @@ def change_tracking_writer(df: DataFrame) -> ChangeTrackingWriteBuilder:
 
 
 def enable_change_tracking_accessors(*, force: bool = False) -> None:
-    """Attach ``.change_tracking`` helpers to ``DataFrame``/``DataFrameWriter`` for fluent usage.
+    """Attach ``.change_tracking`` helpers to ``DataFrame``/``DataFrameWriter``/``DataStreamWriter``.
 
-    Once enabled (this module runs it on import), both ``df.change_tracking`` and
-    ``df.write.change_tracking`` expose the :class:`ChangeTrackingWriteBuilder`, enabling fluent
-    expressions such as ``df.write.change_tracking.options(...).table(...)``.
+    Once enabled (this module runs it on import), ``df.change_tracking``,
+    ``df.write.change_tracking``, and ``df.writeStream.change_tracking`` are available.
+    Batch accessors expose :class:`ChangeTrackingWriteBuilder`; the streaming accessor exposes
+    :class:`~spark_fuse.utils.change_tracking_streaming.StreamingChangeTrackingBuilder`.
 
     Args:
         force: When ``True`` re-installs the accessors even if they already exist.
@@ -210,6 +211,21 @@ def enable_change_tracking_accessors(*, force: bool = False) -> None:
         DataFrame.change_tracking = property(_df_change_tracking)  # type: ignore[attr-defined]
     if force or "change_tracking" not in dfw_attrs:
         DataFrameWriter.change_tracking = property(_dfw_change_tracking)  # type: ignore[attr-defined]
+
+    try:
+        from pyspark.sql.streaming.readwriter import DataStreamWriter
+
+        from .change_tracking_streaming import streaming_change_tracking_writer
+
+        dsw_attrs = getattr(DataStreamWriter, "__dict__", {})
+
+        def _dsw_change_tracking(self: DataStreamWriter):  # type: ignore[type-arg]
+            return streaming_change_tracking_writer(self._df)
+
+        if force or "change_tracking" not in dsw_attrs:
+            DataStreamWriter.change_tracking = property(_dsw_change_tracking)  # type: ignore[attr-defined]
+    except ImportError:
+        pass
 
 
 enable_change_tracking_accessors()
